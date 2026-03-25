@@ -1,0 +1,50 @@
+:root {
+  --primary-color: #409eff;
+  --bg-color: #ffffff;
+  --text-color: #303133;
+  --sidebar-bg: #f5f7fa;
+  --card-bg: #ffffff;
+  --border-color: #e4e7ed;
+  --hover-bg: #ecf5ff;
+  --live-color: #67c23a;
+  --offline-color: #909399;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c0c4cc;
+  border-radius: 3px;
+  
+  &:hover {
+    background: #909399;
+  }
+}
+
+.el-button {
+  --el-button-hover-bg-color: var(--hover-bg);
+}
+
+.el-card {
+  --el-card-bg-color: var(--card-bg);
+  --el-card-border-color: var(--border-color);
+}
