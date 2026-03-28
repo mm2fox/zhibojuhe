@@ -22,6 +22,15 @@
           <el-badge v-if="tabs.length > 0" :value="tabs.length" type="primary" class="tab-count" />
         </div>
         <div v-if="!isCollapsed && tabs.length > 0" class="docker-actions">
+          <el-button 
+            link 
+            size="small" 
+            @click="toggleSplitMode" 
+            :title="splitMode === 'single' ? '分屏显示' : '单屏显示'"
+            :type="splitMode === 'split' ? 'primary' : 'default'"
+          >
+            <el-icon><Grid /></el-icon>
+          </el-button>
           <el-button link size="small" @click="closeAllTabs" title="关闭所有">
             <el-icon><Close /></el-icon>
           </el-button>
@@ -36,13 +45,24 @@
           v-for="tab in tabs"
           :key="tab.id"
           class="docker-tab"
-          :class="{ active: tab.id === activeTabId, muted: tab.muted }"
+          :class="{ active: tab.id === activeTabId, muted: tab.muted, 'in-split': tab.inSplit }"
           @click="selectTab(tab.id)"
           @contextmenu.prevent="showContextMenu($event, tab)"
         >
           <PlatformIcon :platform="tab.platform" :size="16" />
           <span class="tab-name" :title="tab.nickname">{{ tab.nickname }}</span>
           <el-icon v-if="tab.muted" class="mute-icon" :size="12"><Mute /></el-icon>
+          <el-button
+            v-if="splitMode === 'split'"
+            link
+            size="small"
+            class="split-toggle-btn"
+            :class="{ active: tab.inSplit }"
+            @click.stop="toggleInSplit(tab.id)"
+            :title="tab.inSplit ? '退出分屏' : '加入分屏'"
+          >
+            <el-icon><Grid /></el-icon>
+          </el-button>
           <el-button
             link
             size="small"
@@ -83,6 +103,7 @@ const dockerStore = useDockerStore()
 const tabs = computed(() => dockerStore.tabs)
 const activeTabId = computed(() => dockerStore.activeTabId)
 const isCollapsed = computed(() => dockerStore.isCollapsed)
+const splitMode = computed(() => dockerStore.splitMode)
 
 const isHidden = ref(true)
 let hideTimer: ReturnType<typeof setTimeout> | null = null
@@ -115,6 +136,17 @@ function cancelHideTimer() {
 
 function toggleCollapse() {
   dockerStore.toggleCollapse()
+}
+
+function toggleSplitMode() {
+  dockerStore.toggleSplitMode()
+  window.dispatchEvent(new CustomEvent('docker-split-mode-changed', {
+    detail: { splitMode: dockerStore.splitMode }
+  }))
+}
+
+function toggleInSplit(id: string) {
+  dockerStore.toggleInSplit(id)
 }
 
 function selectTab(id: string) {
@@ -314,9 +346,15 @@ document.addEventListener('click', handleClickOutside)
     color: white;
     border-color: var(--primary-color);
     
-    .close-btn {
+    .close-btn,
+    .split-toggle-btn {
       color: white;
     }
+  }
+  
+  &.in-split {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 1px var(--primary-color);
   }
 }
 
@@ -336,6 +374,23 @@ document.addEventListener('click', handleClickOutside)
   opacity: 0.6;
   
   &:hover {
+    opacity: 1;
+  }
+}
+
+.split-toggle-btn {
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--text-color);
+  opacity: 0.6;
+  
+  &:hover {
+    opacity: 1;
+  }
+  
+  &.active {
+    color: var(--primary-color);
     opacity: 1;
   }
 }

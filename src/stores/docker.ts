@@ -1,12 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed, toRaw } from 'vue'
-import type { DockerTab, DockerData, Platform } from '../../electron/preload'
+import type { DockerTab, DockerData, Platform, SplitMode } from '../../electron/preload'
 
 export const useDockerStore = defineStore('docker', () => {
   const tabs = ref<DockerTab[]>([])
   const activeTabId = ref<string | null>(null)
   const isCollapsed = ref(false)
   const loading = ref(false)
+  const splitMode = ref<SplitMode>('single')
 
   const activeTab = computed(() => {
     return tabs.value.find(t => t.id === activeTabId.value) || null
@@ -21,6 +22,7 @@ export const useDockerStore = defineStore('docker', () => {
       tabs.value = data.tabs || []
       activeTabId.value = data.activeTabId || null
       isCollapsed.value = data.isCollapsed || false
+      splitMode.value = data.splitMode || 'single'
     } catch (error) {
       console.error('Failed to load docker:', error)
     } finally {
@@ -33,7 +35,8 @@ export const useDockerStore = defineStore('docker', () => {
       const data: DockerData = {
         tabs: toRaw(tabs.value),
         activeTabId: toRaw(activeTabId.value),
-        isCollapsed: toRaw(isCollapsed.value)
+        isCollapsed: toRaw(isCollapsed.value),
+        splitMode: toRaw(splitMode.value)
       }
       await window.api.docker.set(data)
     } catch (error) {
@@ -51,7 +54,8 @@ export const useDockerStore = defineStore('docker', () => {
 
     const newTab: DockerTab = {
       ...toRaw(tab),
-      addedTime: Date.now()
+      addedTime: Date.now(),
+      inSplit: true
     }
     
     tabs.value.push(newTab)
@@ -109,11 +113,32 @@ export const useDockerStore = defineStore('docker', () => {
     return false
   }
 
+  async function toggleSplitMode() {
+    splitMode.value = splitMode.value === 'single' ? 'split' : 'single'
+    if (splitMode.value === 'split') {
+      tabs.value.forEach(tab => {
+        if (tab.inSplit === undefined) {
+          tab.inSplit = true
+        }
+      })
+    }
+    await saveDocker()
+  }
+
+  async function toggleInSplit(id: string) {
+    const tab = tabs.value.find(t => t.id === id)
+    if (tab) {
+      tab.inSplit = !tab.inSplit
+      await saveDocker()
+    }
+  }
+
   return {
     tabs,
     activeTabId,
     isCollapsed,
     loading,
+    splitMode,
     activeTab,
     hasTabs,
     loadDocker,
@@ -124,6 +149,8 @@ export const useDockerStore = defineStore('docker', () => {
     toggleCollapse,
     getTabById,
     getTabsByPlatform,
-    toggleMute
+    toggleMute,
+    toggleSplitMode,
+    toggleInSplit
   }
 })

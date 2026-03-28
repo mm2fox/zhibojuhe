@@ -1,5 +1,5 @@
 $outputDir = "E:\Project\zhibojuhe\release\直播平台账号聚合管理器"
-$electronZip = "C:\Users\admin\AppData\Local\electron\Cache\9d52d289307a654855bb61f40a54e0b7898cd525432a5eed13c306a897e673ef\electron-v28.3.3-win32-x64.zip"
+$electronZip = "C:\Users\admin\AppData\Local\electron\Cache\electron-v28.3.3-win32-x64.zip"
 
 Write-Host "Stopping running app..."
 Get-Process -Name "直播平台账号聚合管理器" -ErrorAction SilentlyContinue | Stop-Process -Force

@@ -37,12 +37,16 @@ export interface DockerTab {
   title?: string
   addedTime: number
   muted?: boolean
+  inSplit?: boolean
 }
+
+export type SplitMode = 'single' | 'split'
 
 export interface DockerData {
   tabs: DockerTab[]
   activeTabId: string | null
   isCollapsed: boolean
+  splitMode: SplitMode
 }
 
 export interface AppSettings {

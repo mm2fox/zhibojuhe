@@ -1,6 +1,6 @@
 <template>
-  <div class="webview-manager">
-    <div class="webview-wrapper" :class="{ active: !activeTab }">
+  <div class="webview-manager" :class="layoutClass">
+    <div class="webview-wrapper" :class="{ active: !activeTab && !isSplitMode }">
       <webview
         ref="mainWebviewRef"
         :src="mainUrl"
@@ -12,19 +12,67 @@
       </div>
     </div>
     
-    <div
-      v-for="tab in tabs"
-      :key="tab.id"
-      class="webview-wrapper"
-      :class="{ active: activeTabId === tab.id }"
-    >
-      <webview
-        :ref="el => setWebviewRef(tab.id, el)"
-        :src="getTabUrl(tab)"
-        :partition="getTabPartition(tab)"
-        allowpopups
-      ></webview>
-    </div>
+    <template v-if="isSplitMode">
+      <template v-if="!selectedNonSplitTab">
+        <div
+          v-for="(tab, index) in displayTabs"
+          :key="tab.id"
+          class="webview-wrapper split-view"
+          :class="{ active: true }"
+        >
+          <div class="split-hover-trigger"></div>
+          <div class="split-header">
+            <PlatformIcon :platform="tab.platform" :size="14" />
+            <span class="split-title">{{ tab.nickname }}</span>
+            <el-button
+              link
+              size="small"
+              class="split-close"
+              @click.stop="toggleInSplit(tab.id)"
+              title="退出分屏"
+            >
+              <el-icon><Close /></el-icon>
+            </el-button>
+          </div>
+          <webview
+            :ref="el => setWebviewRef(tab.id, el)"
+            :src="getTabUrl(tab)"
+            :partition="getTabPartition(tab)"
+            allowpopups
+          ></webview>
+        </div>
+      </template>
+      
+      <template v-else>
+        <div
+          class="webview-wrapper"
+          :class="{ active: true }"
+        >
+          <webview
+            :ref="el => setWebviewRef(activeTab!.id, el)"
+            :src="getTabUrl(activeTab!)"
+            :partition="getTabPartition(activeTab!)"
+            allowpopups
+          ></webview>
+        </div>
+      </template>
+    </template>
+    
+    <template v-else>
+      <div
+        v-for="tab in tabs"
+        :key="tab.id"
+        class="webview-wrapper"
+        :class="{ active: activeTabId === tab.id }"
+      >
+        <webview
+          :ref="el => setWebviewRef(tab.id, el)"
+          :src="getTabUrl(tab)"
+          :partition="getTabPartition(tab)"
+          allowpopups
+        ></webview>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -32,6 +80,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useAccountStore } from '@/stores/account'
 import { useDockerStore } from '@/stores/docker'
+import PlatformIcon from './PlatformIcon.vue'
 import type { Platform, DockerTab } from '../../electron/preload'
 
 const accountStore = useAccountStore()
@@ -63,6 +112,26 @@ const currentPlatform = computed(() => accountStore.currentPlatform)
 const tabs = computed(() => dockerStore.tabs)
 const activeTabId = computed(() => dockerStore.activeTabId)
 const activeTab = computed(() => dockerStore.activeTab)
+const splitMode = computed(() => dockerStore.splitMode)
+
+const isSplitMode = computed(() => splitMode.value === 'split' && tabs.value.length > 0)
+
+const displayTabs = computed(() => {
+  return tabs.value.filter(t => t.inSplit !== false).slice(0, 4)
+})
+
+const selectedNonSplitTab = computed(() => {
+  if (!isSplitMode.value || !activeTab.value) return false
+  return activeTab.value.inSplit === false
+})
+
+const layoutClass = computed(() => {
+  if (!isSplitMode.value || selectedNonSplitTab.value) return ''
+  const count = displayTabs.value.length
+  if (count === 1) return 'layout-single'
+  if (count === 2) return 'layout-split-2'
+  return 'layout-split-4'
+})
 
 const mainUrl = computed(() => platformUrls[currentPlatform.value])
 const mainPartition = computed(() => `persist:${currentPlatform.value}`)
@@ -98,6 +167,21 @@ function handleNavigateToRoom(event: CustomEvent) {
       avatar: avatar || ''
     })
   }
+}
+
+function closeTab(id: string) {
+  dockerStore.removeTab(id)
+  if (dockerStore.hasTabs && dockerStore.activeTabId) {
+    window.dispatchEvent(new CustomEvent('docker-tab-selected', {
+      detail: { tabId: dockerStore.activeTabId }
+    }))
+  } else {
+    window.dispatchEvent(new CustomEvent('docker-cleared'))
+  }
+}
+
+function toggleInSplit(id: string) {
+  dockerStore.toggleInSplit(id)
 }
 
 async function scrollToLoadMore(webview: Electron.WebviewTag) {
@@ -561,6 +645,50 @@ onUnmounted(() => {
   flex: 1;
   position: relative;
   overflow: hidden;
+  
+  &.layout-single {
+    .webview-wrapper {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      
+      &:first-child {
+        display: none;
+      }
+    }
+  }
+  
+  &.layout-split-2 {
+    display: flex;
+    flex-direction: row;
+    
+    .webview-wrapper {
+      position: relative;
+      flex: 1;
+      width: 50%;
+      
+      &:first-child {
+        display: none;
+      }
+    }
+  }
+  
+  &.layout-split-4 {
+    display: flex;
+    flex-wrap: wrap;
+    
+    .webview-wrapper {
+      position: relative;
+      width: 50%;
+      height: 50%;
+      
+      &:first-child {
+        display: none;
+      }
+    }
+  }
 }
 
 .webview-wrapper {
@@ -576,6 +704,76 @@ onUnmounted(() => {
   &.active {
     opacity: 1;
     pointer-events: auto;
+  }
+  
+  &.split-view {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-color, #e4e7ed);
+    position: relative;
+    
+    webview {
+      flex: 1;
+    }
+    
+    .split-header {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    
+    .split-hover-trigger {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 40px;
+      z-index: 5;
+    }
+    
+    .split-hover-trigger:hover ~ .split-header,
+    .split-header:hover {
+      opacity: 1;
+    }
+  }
+}
+
+.split-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background-color: rgba(245, 247, 250, 0.95);
+  backdrop-filter: blur(4px);
+  border-bottom: 1px solid var(--border-color, #e4e7ed);
+  font-size: 12px;
+  
+  :global(.dark) & {
+    background-color: rgba(37, 37, 37, 0.95);
+  }
+}
+
+.split-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-color);
+}
+
+.split-close {
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  color: var(--text-color);
+  opacity: 0.6;
+  
+  &:hover {
+    opacity: 1;
   }
 }
 

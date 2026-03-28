@@ -39,18 +39,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from './stores/settings'
 import { useDockerStore } from './stores/docker'
+import { useFollowStore } from './stores/follow'
+import { useAccountStore } from './stores/account'
 import Sidebar from './components/Sidebar.vue'
 import DockerBar from './components/DockerBar.vue'
 
 const settingsStore = useSettingsStore()
 const dockerStore = useDockerStore()
+const followStore = useFollowStore()
+const accountStore = useAccountStore()
 const isDark = computed(() => settingsStore.theme === 'dark')
 
 const sidebarCollapsed = ref(false)
 let hideTimer: ReturnType<typeof setTimeout> | null = null
+let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 const minimize = () => {
   window.api.window.minimize()
@@ -85,14 +90,68 @@ function cancelHideSidebar() {
   }
 }
 
-onMounted(() => {
+function startAutoRefresh() {
+  stopAutoRefresh()
+  
+  const { autoRefreshFollow, refreshInterval } = settingsStore.settings
+  if (!autoRefreshFollow) return
+  
+  const intervalMs = refreshInterval * 60 * 1000
+  refreshTimer = setInterval(async () => {
+    const accounts = accountStore.accounts.filter(a => a.status === 'active')
+    for (const account of accounts) {
+      try {
+        console.log(`[AutoRefresh] Refreshing follows for ${account.platform}`)
+        await followStore.refreshFollows(account.platform)
+      } catch (error) {
+        console.error(`[AutoRefresh] Failed to refresh ${account.platform}:`, error)
+      }
+    }
+  }, intervalMs)
+  
+  console.log(`[AutoRefresh] Started with interval ${refreshInterval} minutes`)
+}
+
+function stopAutoRefresh() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+    console.log('[AutoRefresh] Stopped')
+  }
+}
+
+watch(
+  () => settingsStore.settings.autoRefreshFollow,
+  () => {
+    if (settingsStore.settings.autoRefreshFollow) {
+      startAutoRefresh()
+    } else {
+      stopAutoRefresh()
+    }
+  }
+)
+
+watch(
+  () => settingsStore.settings.refreshInterval,
+  () => {
+    if (settingsStore.settings.autoRefreshFollow) {
+      startAutoRefresh()
+    }
+  }
+)
+
+onMounted(async () => {
+  await settingsStore.loadSettings()
+  await accountStore.loadAccounts()
   dockerStore.loadDocker()
+  startAutoRefresh()
 })
 
 onUnmounted(() => {
   if (hideTimer) {
     clearTimeout(hideTimer)
   }
+  stopAutoRefresh()
 })
 </script>
 
