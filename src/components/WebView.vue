@@ -1,6 +1,6 @@
 <template>
   <div class="webview-manager" :class="layoutClass">
-    <div class="webview-wrapper" :class="{ active: !activeTab && !isSplitMode }">
+    <div class="webview-wrapper main-webview" :class="{ active: !activeTab && !isSplitMode }">
       <webview
         ref="mainWebviewRef"
         :src="mainUrl"
@@ -12,67 +12,35 @@
       </div>
     </div>
     
-    <template v-if="isSplitMode">
-      <template v-if="!selectedNonSplitTab">
-        <div
-          v-for="(tab, index) in displayTabs"
-          :key="tab.id"
-          class="webview-wrapper split-view"
-          :class="{ active: true }"
-        >
-          <div class="split-hover-trigger"></div>
-          <div class="split-header">
-            <PlatformIcon :platform="tab.platform" :size="14" />
-            <span class="split-title">{{ tab.nickname }}</span>
-            <el-button
-              link
-              size="small"
-              class="split-close"
-              @click.stop="toggleInSplit(tab.id)"
-              title="退出分屏"
-            >
-              <el-icon><Close /></el-icon>
-            </el-button>
-          </div>
-          <webview
-            :ref="el => setWebviewRef(tab.id, el)"
-            :src="getTabUrl(tab)"
-            :partition="getTabPartition(tab)"
-            allowpopups
-          ></webview>
+    <div
+      v-for="tab in tabs"
+      :key="tab.id"
+      class="webview-wrapper"
+      :class="getTabClass(tab)"
+    >
+      <template v-if="isSplitMode && tab.inSplit !== false && !selectedNonSplitTab">
+        <div class="split-hover-trigger"></div>
+        <div class="split-header">
+          <PlatformIcon :platform="tab.platform" :size="14" />
+          <span class="split-title">{{ tab.nickname }}</span>
+          <el-button
+            link
+            size="small"
+            class="split-close"
+            @click.stop="toggleInSplit(tab.id)"
+            title="退出分屏"
+          >
+            <el-icon><Close /></el-icon>
+          </el-button>
         </div>
       </template>
-      
-      <template v-else>
-        <div
-          class="webview-wrapper"
-          :class="{ active: true }"
-        >
-          <webview
-            :ref="el => setWebviewRef(activeTab!.id, el)"
-            :src="getTabUrl(activeTab!)"
-            :partition="getTabPartition(activeTab!)"
-            allowpopups
-          ></webview>
-        </div>
-      </template>
-    </template>
-    
-    <template v-else>
-      <div
-        v-for="tab in tabs"
-        :key="tab.id"
-        class="webview-wrapper"
-        :class="{ active: activeTabId === tab.id }"
-      >
-        <webview
-          :ref="el => setWebviewRef(tab.id, el)"
-          :src="getTabUrl(tab)"
-          :partition="getTabPartition(tab)"
-          allowpopups
-        ></webview>
-      </div>
-    </template>
+      <webview
+        :ref="el => setWebviewRef(tab.id, el)"
+        :src="getTabUrl(tab)"
+        :partition="getTabPartition(tab)"
+        allowpopups
+      ></webview>
+    </div>
   </div>
 </template>
 
@@ -124,6 +92,36 @@ const selectedNonSplitTab = computed(() => {
   if (!isSplitMode.value || !activeTab.value) return false
   return activeTab.value.inSplit === false
 })
+
+function shouldShowTab(tab: DockerTab): boolean {
+  if (!isSplitMode.value) {
+    return activeTabId.value === tab.id
+  }
+  
+  if (selectedNonSplitTab.value) {
+    return activeTabId.value === tab.id
+  }
+  
+  if (tab.inSplit === false) {
+    return false
+  }
+  
+  const splitTabs = tabs.value.filter(t => t.inSplit !== false)
+  const tabIndex = splitTabs.findIndex(t => t.id === tab.id)
+  return tabIndex >= 0 && tabIndex < 4
+}
+
+function getTabClass(tab: DockerTab): Record<string, boolean> {
+  const isVisible = shouldShowTab(tab)
+  const isSplitView = isSplitMode.value && tab.inSplit !== false && !selectedNonSplitTab.value
+  
+  return {
+    active: isVisible,
+    'split-view': isSplitView,
+    'in-split-display': isSplitView,
+    'non-split-tab': isSplitMode.value && tab.inSplit === false
+  }
+}
 
 const layoutClass = computed(() => {
   if (!isSplitMode.value || selectedNonSplitTab.value) return ''
@@ -653,10 +651,10 @@ onUnmounted(() => {
       left: 0;
       right: 0;
       bottom: 0;
-      
-      &:first-child {
-        display: none;
-      }
+    }
+    
+    .main-webview {
+      z-index: 2;
     }
   }
   
@@ -665,13 +663,40 @@ onUnmounted(() => {
     flex-direction: row;
     
     .webview-wrapper {
-      position: relative;
-      flex: 1;
-      width: 50%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 0;
+      pointer-events: none;
+      visibility: hidden;
       
-      &:first-child {
-        display: none;
+      &.in-split-display {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        width: 50%;
+        border: 1px solid var(--border-color, #e4e7ed);
+        z-index: 1;
+        pointer-events: auto;
+        visibility: visible;
+        
+        webview {
+          flex: 1;
+        }
       }
+      
+      &.non-split-tab.active {
+        z-index: 10;
+        pointer-events: auto;
+        visibility: visible;
+      }
+    }
+    
+    .main-webview {
+      z-index: 0;
     }
   }
   
@@ -680,13 +705,40 @@ onUnmounted(() => {
     flex-wrap: wrap;
     
     .webview-wrapper {
-      position: relative;
-      width: 50%;
-      height: 50%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 0;
+      pointer-events: none;
+      visibility: hidden;
       
-      &:first-child {
-        display: none;
+      &.in-split-display {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        width: 50%;
+        height: 50%;
+        border: 1px solid var(--border-color, #e4e7ed);
+        z-index: 1;
+        pointer-events: auto;
+        visibility: visible;
+        
+        webview {
+          flex: 1;
+        }
       }
+      
+      &.non-split-tab.active {
+        z-index: 10;
+        pointer-events: auto;
+        visibility: visible;
+      }
+    }
+    
+    .main-webview {
+      z-index: 0;
     }
   }
 }
@@ -697,12 +749,11 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  opacity: 0;
+  z-index: 0;
   pointer-events: none;
-  transition: opacity 0.2s ease;
   
   &.active {
-    opacity: 1;
+    z-index: 1;
     pointer-events: auto;
   }
   
