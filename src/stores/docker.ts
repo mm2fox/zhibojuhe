@@ -55,7 +55,8 @@ export const useDockerStore = defineStore('docker', () => {
     const newTab: DockerTab = {
       ...toRaw(tab),
       addedTime: Date.now(),
-      inSplit: true
+      inSplit: true,
+      muted: true
     }
     
     tabs.value.push(newTab)

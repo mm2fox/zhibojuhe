@@ -446,6 +446,8 @@ function setupDockerWebviewEvents(webview: Electron.WebviewTag, tabId: string) {
 
   const platform = tab.platform
   
+  webview.setAudioMuted(tab.muted !== false)
+  
   webview.addEventListener('did-stop-loading', async () => {
     if (!dockerCookieInjected.value.has(tabId)) {
       const account = accountStore.accounts.find(a => a.platform === platform)
