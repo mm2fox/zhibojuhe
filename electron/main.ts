@@ -160,9 +160,8 @@ function createWindow() {
         event.preventDefault()
       }
     } else if (input.key === 'w' && input.control) {
-      if (closeCurrentTab()) {
-        event.preventDefault()
-      }
+      closeCurrentTab()
+      event.preventDefault()
     }
   })
 
@@ -180,9 +179,8 @@ function createWindow() {
             event.preventDefault()
           }
         } else if (input.key === 'w' && input.control) {
-          if (closeCurrentTab()) {
-            event.preventDefault()
-          }
+          closeCurrentTab()
+          event.preventDefault()
         }
       })
     }

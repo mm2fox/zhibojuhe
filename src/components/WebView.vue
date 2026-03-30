@@ -63,6 +63,7 @@ const cookieInjected = ref<Record<Platform, boolean>>({
   douyu: false
 })
 const dockerCookieInjected = ref<Set<string>>(new Set())
+const webviewEventsSet = ref<Set<string>>(new Set())
 
 const platformUrls: Record<Platform, string> = {
   huya: 'https://www.huya.com/myfollow',
@@ -136,8 +137,15 @@ const mainPartition = computed(() => `persist:${currentPlatform.value}`)
 
 function setWebviewRef(id: string, el: any) {
   if (el) {
+    const existingRef = webviewRefs.value.get(id)
+    if (existingRef === el) {
+      return
+    }
     webviewRefs.value.set(id, el)
-    setupDockerWebviewEvents(el, id)
+    if (!webviewEventsSet.value.has(id)) {
+      webviewEventsSet.value.add(id)
+      setupDockerWebviewEvents(el, id)
+    }
   }
 }
 
@@ -446,9 +454,17 @@ function setupDockerWebviewEvents(webview: Electron.WebviewTag, tabId: string) {
 
   const platform = tab.platform
   
-  webview.setAudioMuted(tab.muted !== false)
+  function applyMuteState() {
+    const currentTab = dockerStore.getTabById(tabId)
+    const shouldMute = currentTab?.muted !== false
+    webview.setAudioMuted(shouldMute)
+  }
   
+  webview.addEventListener('did-attach', applyMuteState)
+  webview.addEventListener('did-start-loading', applyMuteState)
   webview.addEventListener('did-stop-loading', async () => {
+    applyMuteState()
+    
     if (!dockerCookieInjected.value.has(tabId)) {
       const account = accountStore.accounts.find(a => a.platform === platform)
       if (account && account.cookies) {
@@ -462,10 +478,7 @@ function setupDockerWebviewEvents(webview: Electron.WebviewTag, tabId: string) {
       }
     }
     
-    const currentTab = dockerStore.getTabById(tabId)
-    if (currentTab?.muted) {
-      webview.setAudioMuted(true)
-    }
+    applyMuteState()
   })
 
   webview.addEventListener('will-navigate', (event: any) => {
@@ -479,6 +492,7 @@ function setupDockerWebviewEvents(webview: Electron.WebviewTag, tabId: string) {
   })
 
   webview.addEventListener('did-start-navigation', (event: any) => {
+    applyMuteState()
     if (handleExternalProtocol(event.url)) {
       webview.stop()
     }
@@ -602,6 +616,7 @@ onMounted(async () => {
   window.api.docker.onTabClosed((tabId: string) => {
     webviewRefs.value.delete(tabId)
     dockerCookieInjected.value.delete(tabId)
+    webviewEventsSet.value.delete(tabId)
     
     const index = dockerStore.tabs.findIndex(t => t.id === tabId)
     if (index >= 0) {
