@@ -82,7 +82,8 @@ const api = {
     getLoginUrl: (platform: Platform) => ipcRenderer.invoke('platform:getLoginUrl', platform),
     extractCookies: (platform: Platform) => ipcRenderer.invoke('platform:extractCookies', platform),
     injectCookies: (platform: Platform, cookies: string) => ipcRenderer.invoke('platform:injectCookies', platform, cookies),
-    getCookiesFromPartition: (platform: Platform, partition: string) => ipcRenderer.invoke('platform:getCookiesFromPartition', platform, partition)
+    getCookiesFromPartition: (platform: Platform, partition: string) => ipcRenderer.invoke('platform:getCookiesFromPartition', platform, partition),
+    clearCookies: (platform: Platform) => ipcRenderer.invoke('platform:clearCookies', platform)
   },
 
   follow: {

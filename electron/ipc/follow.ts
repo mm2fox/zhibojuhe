@@ -26,9 +26,6 @@ export function registerFollowIPC() {
         return { success: false, error: '请先登录账号', needsRelogin: true }
       }
 
-      console.log(`[${platform}] Refreshing follow list...`)
-      console.log(`[${platform}] Account cookies length:`, account.cookies?.length || 0)
-
       let anchors: FollowedAnchor[] = []
 
       switch (platform) {
@@ -43,22 +40,17 @@ export function registerFollowIPC() {
           break
       }
 
-      console.log(`[${platform}] API returned ${anchors.length} anchors`)
-
       if (anchors.length > 0) {
         db.deleteFollowsByPlatform(platform)
         db.saveFollows(anchors)
-        console.log(`[${platform}] Saved ${anchors.length} follows`)
         return { success: true, anchors }
       }
 
       const cachedFollows = db.getFollowsByPlatform(platform)
       if (cachedFollows.length > 0) {
-        console.log(`[${platform}] API returned empty, using ${cachedFollows.length} cached follows`)
         return { success: true, anchors: cachedFollows, fromCache: true }
       }
 
-      console.log(`[${platform}] No follows found`)
       return { success: true, anchors: [] }
     } catch (error) {
       console.error('Failed to refresh follows:', error)

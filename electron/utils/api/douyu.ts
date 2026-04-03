@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios from './axios-config'
 import type { FollowedAnchor, Platform } from '../../preload'
 
 export class DouyuAPI {
@@ -7,7 +7,20 @@ export class DouyuAPI {
   static async getFollowList(cookies: string): Promise<FollowedAnchor[]> {
     try {
       console.log('[DouyuAPI] Fetching follow list...')
-      console.log('[DouyuAPI] Cookies length:', cookies.length, 'preview:', cookies.substring(0, 100) + '...')
+      console.log('[DouyuAPI] Cookies length:', cookies.length)
+      console.log('[DouyuAPI] Cookies preview:', cookies.substring(0, 300))
+      
+      const hasAcfUid = cookies.includes('acf_uid=')
+      const hasAcfAuth = cookies.includes('acf_auth=')
+      const hasAcfStk = cookies.includes('acf_stk=')
+      const hasDyUsername = cookies.includes('dy_username=')
+      
+      console.log('[DouyuAPI] Cookie check - acf_uid:', hasAcfUid, 'acf_auth:', hasAcfAuth, 'acf_stk:', hasAcfStk, 'dy_username:', hasDyUsername)
+      
+      if (!hasAcfUid && !hasDyUsername) {
+        console.log('[DouyuAPI] Error: Missing required cookies (acf_uid or dy_username)')
+        return []
+      }
       
       const response = await axios.get('https://www.douyu.com/wgapi/livenc/liveweb/follow/list', {
         headers: {
@@ -16,7 +29,10 @@ export class DouyuAPI {
           'Referer': 'https://www.douyu.com/directory/myFollow',
           'Accept': 'application/json, text/plain, */*',
           'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-          'Origin': 'https://www.douyu.com'
+          'Origin': 'https://www.douyu.com',
+          'Sec-Fetch-Dest': 'empty',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Site': 'same-origin'
         },
         params: {
           page: 1,
@@ -25,8 +41,8 @@ export class DouyuAPI {
       })
 
       const data = response.data
-      console.log('[DouyuAPI] Full response:', JSON.stringify(data).substring(0, 500))
-      console.log('[DouyuAPI] Response error code:', data.error, 'data:', data.data ? 'exists' : 'null')
+      console.log('[DouyuAPI] Response status:', response.status)
+      console.log('[DouyuAPI] Response data:', JSON.stringify(data).substring(0, 500))
       
       if (data.error !== 0) {
         console.log('[DouyuAPI] API returned error:', data.error, data.msg || '')

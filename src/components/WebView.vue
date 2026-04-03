@@ -1,13 +1,19 @@
 <template>
   <div class="webview-manager" :class="layoutClass">
-    <div class="webview-wrapper main-webview" :class="{ active: !activeTab && !isSplitMode }">
+    <div 
+      v-for="platform in platforms" 
+      :key="platform"
+      class="webview-wrapper main-webview" 
+      :class="{ active: currentPlatform === platform && !activeTab && !isSplitMode }"
+    >
       <webview
-        ref="mainWebviewRef"
-        :src="mainUrl"
-        :partition="mainPartition"
+        :ref="el => setMainWebviewRef(platform, el)"
+        :src="platformUrls[platform]"
+        :partition="`persist:${platform}`"
         allowpopups
+        v-show="currentPlatform === platform"
       ></webview>
-      <div v-if="mainLoading" class="loading-overlay">
+      <div v-if="mainLoading && currentPlatform === platform" class="loading-overlay">
         <el-icon class="loading-icon"><Loading /></el-icon>
       </div>
     </div>
@@ -54,7 +60,12 @@ import type { Platform, DockerTab } from '../../electron/preload'
 const accountStore = useAccountStore()
 const dockerStore = useDockerStore()
 
-const mainWebviewRef = ref<Electron.WebviewTag | null>(null)
+const platforms: Platform[] = ['huya', 'douyin', 'douyu']
+const mainWebviewRefs = ref<Record<Platform, Electron.WebviewTag | null>>({
+  huya: null,
+  douyin: null,
+  douyu: null
+})
 const webviewRefs = ref<Map<string, Electron.WebviewTag>>(new Map())
 const mainLoading = ref(true)
 const cookieInjected = ref<Record<Platform, boolean>>({
@@ -64,6 +75,7 @@ const cookieInjected = ref<Record<Platform, boolean>>({
 })
 const dockerCookieInjected = ref<Set<string>>(new Set())
 const webviewEventsSet = ref<Set<string>>(new Set())
+const pendingMuteState = ref<Map<string, boolean>>(new Map())
 
 const platformUrls: Record<Platform, string> = {
   huya: 'https://www.huya.com/myfollow',
@@ -132,8 +144,19 @@ const layoutClass = computed(() => {
   return 'layout-split-4'
 })
 
-const mainUrl = computed(() => platformUrls[currentPlatform.value])
-const mainPartition = computed(() => `persist:${currentPlatform.value}`)
+function setMainWebviewRef(platform: Platform, el: any) {
+  if (el) {
+    const existingRef = mainWebviewRefs.value[platform]
+    if (existingRef === el) {
+      return
+    }
+    mainWebviewRefs.value[platform] = el
+    if (!webviewEventsSet.value.has(`main-${platform}`)) {
+      webviewEventsSet.value.add(`main-${platform}`)
+      setupMainWebviewEvents(el, platform)
+    }
+  }
+}
 
 function setWebviewRef(id: string, el: any) {
   if (el) {
@@ -142,6 +165,17 @@ function setWebviewRef(id: string, el: any) {
       return
     }
     webviewRefs.value.set(id, el)
+    
+    const tab = dockerStore.getTabById(id)
+    if (tab) {
+      try {
+        el.setAudioMuted(tab.muted !== false)
+        console.log(`[Docker ${id}] Initial mute state set: ${tab.muted !== false}`)
+      } catch (error) {
+        // Webview not ready yet, will be set in events
+      }
+    }
+    
     if (!webviewEventsSet.value.has(id)) {
       webviewEventsSet.value.add(id)
       setupDockerWebviewEvents(el, id)
@@ -237,7 +271,7 @@ async function scrollToLoadMore(webview: Electron.WebviewTag) {
   try {
     await webview.executeJavaScript(scrollScript)
   } catch (error) {
-    console.error('[WebView] Scroll failed:', error)
+    // Webview not ready, ignore
   }
 }
 
@@ -358,7 +392,37 @@ async function extractFollowsFromWebview(webview: Electron.WebviewTag, platform:
         return new Promise(function(resolve) {
           try {
             var follows = [];
-            var liItems = document.querySelectorAll('li.DyListCover-item, .follow-list li, ul.follow-list > li, [class*="follow"] li, .layout-Cover-item');
+            
+            console.log('[Douyu WebView] Starting extraction...');
+            
+            var selectors = [
+              'li.DyListCover-item',
+              '.follow-list li',
+              'ul.follow-list > li',
+              '[class*="follow"] li',
+              '.layout-Cover-item',
+              '.List-item',
+              '[class*="ListCover"]',
+              '.dy-list-con li',
+              '.con-box li'
+            ];
+            
+            var liItems = [];
+            for (var i = 0; i < selectors.length; i++) {
+              var items = document.querySelectorAll(selectors[i]);
+              if (items.length > 0) {
+                console.log('[Douyu WebView] Found ' + items.length + ' items with selector: ' + selectors[i]);
+                liItems = items;
+                break;
+              }
+            }
+            
+            if (liItems.length === 0) {
+              console.log('[Douyu WebView] No items found, trying broader search...');
+              liItems = document.querySelectorAll('li');
+            }
+            
+            console.log('[Douyu WebView] Processing ' + liItems.length + ' li items');
             
             liItems.forEach(function(li) {
               var link = li.querySelector('a[href*="douyu.com/"]');
@@ -370,7 +434,7 @@ async function extractFollowsFromWebview(webview: Electron.WebviewTag, platform:
               if (roomIdMatch) roomId = roomIdMatch[1];
               if (!roomId) return;
               
-              var nameEl = li.querySelector('.DyListCover-zone, h3, .title, [class*="name"]');
+              var nameEl = li.querySelector('.DyListCover-zone, h3, .title, [class*="name"], [class*="nick"]');
               var name = '';
               if (nameEl) name = nameEl.getAttribute('title') || nameEl.textContent.trim();
               if (!name) {
@@ -384,11 +448,11 @@ async function extractFollowsFromWebview(webview: Electron.WebviewTag, platform:
               
               var isLive = false;
               var liHtml = li.outerHTML || '';
-              if (liHtml.indexOf('is-live') !== -1 || liHtml.indexOf('直播中') !== -1) isLive = true;
-              if (li.querySelector('.DyListCover-isLive, [class*="isLive"], .is-live')) isLive = true;
+              if (liHtml.indexOf('is-live') !== -1 || liHtml.indexOf('直播中') !== -1 || liHtml.indexOf('on-live') !== -1) isLive = true;
+              if (li.querySelector('.DyListCover-isLive, [class*="isLive"], .is-live, [class*="live"]')) isLive = true;
               
               var viewerCount = 0;
-              var countEl = li.querySelector('.DyListCover-hot, [class*="hot"], [class*="view"]');
+              var countEl = li.querySelector('.DyListCover-hot, [class*="hot"], [class*="view"], [class*="count"]');
               if (countEl) {
                 var countText = countEl.textContent.trim();
                 if (countText.indexOf('万') !== -1) {
@@ -413,8 +477,10 @@ async function extractFollowsFromWebview(webview: Electron.WebviewTag, platform:
               });
             });
             
+            console.log('[Douyu WebView] Extracted ' + follows.length + ' follows');
             resolve({ success: true, follows: follows, count: follows.length });
           } catch (error) {
+            console.error('[Douyu WebView] Error:', error.message);
             resolve({ success: false, follows: [], error: error.message });
           }
         });
@@ -433,7 +499,7 @@ async function extractFollowsFromWebview(webview: Electron.WebviewTag, platform:
       }))
     }
   } catch (error) {
-    console.error(`[${platform}] Failed to extract follows:`, error)
+    // Webview not ready or navigation in progress, ignore
   }
 }
 
@@ -455,30 +521,38 @@ function setupDockerWebviewEvents(webview: Electron.WebviewTag, tabId: string) {
   const platform = tab.platform
   
   function applyMuteState() {
-    const currentTab = dockerStore.getTabById(tabId)
-    const shouldMute = currentTab?.muted !== false
-    webview.setAudioMuted(shouldMute)
+    try {
+      const currentTab = dockerStore.getTabById(tabId)
+      const shouldMute = currentTab?.muted !== false
+      webview.setAudioMuted(shouldMute)
+    } catch (error) {
+      // Webview not ready, ignore
+    }
   }
   
-  webview.addEventListener('did-attach', applyMuteState)
+  webview.addEventListener('dom-ready', () => {
+    setTimeout(applyMuteState, 100)
+  })
   webview.addEventListener('did-start-loading', applyMuteState)
   webview.addEventListener('did-stop-loading', async () => {
-    applyMuteState()
+    setTimeout(applyMuteState, 100)
     
     if (!dockerCookieInjected.value.has(tabId)) {
-      const account = accountStore.accounts.find(a => a.platform === platform)
-      if (account && account.cookies) {
-        console.log(`[Docker ${tabId}] Injecting cookies for ${platform}`)
-        const result = await window.api.platform.injectCookies(platform, account.cookies)
-        if (result.success && result.injected > 0) {
+      const sessionCookies = await window.api.platform.extractCookies(platform)
+      const sessionCookieCount = sessionCookies.count || 0
+      const hasSessionCookies = sessionCookieCount > 5
+      
+      if (!hasSessionCookies) {
+        const account = accountStore.accounts.find(a => a.platform === platform)
+        if (account && account.cookies) {
+          await window.api.platform.injectCookies(platform, account.cookies)
           dockerCookieInjected.value.add(tabId)
-          console.log(`[Docker ${tabId}] Cookies injected, reloading`)
           webview.reload()
         }
+      } else {
+        dockerCookieInjected.value.add(tabId)
       }
     }
-    
-    applyMuteState()
   })
 
   webview.addEventListener('will-navigate', (event: any) => {
@@ -492,7 +566,7 @@ function setupDockerWebviewEvents(webview: Electron.WebviewTag, tabId: string) {
   })
 
   webview.addEventListener('did-start-navigation', (event: any) => {
-    applyMuteState()
+    setTimeout(applyMuteState, 100)
     if (handleExternalProtocol(event.url)) {
       webview.stop()
     }
@@ -507,15 +581,21 @@ function setupMainWebviewEvents(webview: Electron.WebviewTag, platform: Platform
   webview.addEventListener('did-stop-loading', async () => {
     mainLoading.value = false
 
-    const account = accountStore.accounts.find(a => a.platform === platform)
-    if (account && account.cookies && !cookieInjected.value[platform]) {
-      console.log(`[Main] Injecting cookies for ${platform}`)
-      const result = await window.api.platform.injectCookies(platform, account.cookies)
-      if (result.success && result.injected > 0) {
+    if (!cookieInjected.value[platform]) {
+      const sessionCookies = await window.api.platform.extractCookies(platform)
+      const sessionCookieCount = sessionCookies.count || 0
+      const hasSessionCookies = sessionCookieCount > 5
+      
+      if (!hasSessionCookies) {
+        const account = accountStore.accounts.find(a => a.platform === platform)
+        if (account && account.cookies) {
+          await window.api.platform.injectCookies(platform, account.cookies)
+          cookieInjected.value[platform] = true
+          webview.reload()
+          return
+        }
+      } else {
         cookieInjected.value[platform] = true
-        console.log(`[Main] Cookies injected, reloading`)
-        webview.reload()
-        return
       }
     }
 
@@ -562,6 +642,16 @@ watch(currentPlatform, () => {
 
 watch(tabs, (newTabs, oldTabs) => {
   const oldIds = new Set(oldTabs?.map(t => t.id) || [])
+  const newIds = new Set(newTabs?.map(t => t.id) || [])
+  
+  oldIds.forEach(id => {
+    if (!newIds.has(id)) {
+      dockerCookieInjected.value.delete(id)
+      webviewEventsSet.value.delete(id)
+      webviewRefs.value.delete(id)
+    }
+  })
+  
   newTabs.forEach(tab => {
     if (!oldIds.has(tab.id)) {
       dockerCookieInjected.value.delete(tab.id)
@@ -576,14 +666,16 @@ onMounted(async () => {
   
   window.addEventListener('refresh-follows', async () => {
     dockerStore.setActiveTab(null)
-    if (mainWebviewRef.value) {
-      mainWebviewRef.value.src = platformUrls[currentPlatform.value]
+    const webview = mainWebviewRefs.value[currentPlatform.value]
+    if (webview) {
+      webview.src = platformUrls[currentPlatform.value]
     }
   })
   
   window.addEventListener('docker-cleared', () => {
-    if (mainWebviewRef.value) {
-      mainWebviewRef.value.src = platformUrls[currentPlatform.value]
+    const webview = mainWebviewRefs.value[currentPlatform.value]
+    if (webview) {
+      webview.src = platformUrls[currentPlatform.value]
     }
   })
 
@@ -634,12 +726,6 @@ onMounted(async () => {
           detail: { tabId: dockerStore.activeTabId }
         }))
       }
-    }
-  })
-
-  nextTick(() => {
-    if (mainWebviewRef.value) {
-      setupMainWebviewEvents(mainWebviewRef.value, currentPlatform.value)
     }
   })
 })

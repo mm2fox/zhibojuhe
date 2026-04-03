@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, webContents } from 'electron'
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, session } from 'electron'
 import { join } from 'path'
 import { registerAccountIPC } from './ipc/account'
 import { registerSettingsIPC } from './ipc/settings'
@@ -8,9 +8,81 @@ import { registerDockerIPC } from './ipc/docker'
 import { getSettings } from './store'
 import Store from 'electron-store'
 
+app.commandLine.appendSwitch('disable-features', 'WebRTC')
+app.commandLine.appendSwitch('disable-webrtc')
+
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isQuitting = false
+
+async function flushAllSessions() {
+  const platforms = ['huya', 'douyin', 'douyu']
+  for (const platform of platforms) {
+    try {
+      const partitionSession = session.fromPartition(`persist:${platform}`)
+      await partitionSession.flushStorageData()
+    } catch (error) {
+      // ignore
+    }
+  }
+}
+
+async function restoreCookiesFromDatabase() {
+  try {
+    const { Database } = await import('./store/database')
+    const db = Database.getInstance()
+    const accounts = db.getAllAccounts()
+    
+    for (const account of accounts) {
+      if (!account.cookies) continue
+      
+      const platform = account.platform
+      const partitionSession = session.fromPartition(`persist:${platform}`)
+      
+      const existingCookies = await partitionSession.cookies.get({})
+      
+      if (existingCookies.length < 5) {
+        const platformUrls: Record<string, string> = {
+          huya: 'https://www.huya.com',
+          douyin: 'https://www.douyin.com',
+          douyu: 'https://www.douyu.com'
+        }
+        
+        const domains: Record<string, string> = {
+          huya: '.huya.com',
+          douyin: '.douyin.com',
+          douyu: '.douyu.com'
+        }
+        
+        const url = platformUrls[platform]
+        const domain = domains[platform]
+        
+        const cookiePairs = account.cookies.split(';').map(c => c.trim())
+        
+        for (const pair of cookiePairs) {
+          if (!pair) continue
+          const [name, ...valueParts] = pair.split('=')
+          const value = valueParts.join('=')
+          if (name && value) {
+            try {
+              await partitionSession.cookies.set({
+                url,
+                name: name.trim(),
+                value: value.trim(),
+                domain,
+                path: '/'
+              })
+            } catch (err) {
+              // ignore
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    // ignore
+  }
+}
 
 const dockerStore = new Store<{ docker: { tabs: any[], activeTabId: string | null } }>({
   name: 'docker',
@@ -304,10 +376,12 @@ function registerWindowIPC() {
   })
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   createWindow()
   createTray()
   registerAllIPC()
+  
+  await restoreCookiesFromDatabase()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -322,8 +396,9 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', async () => {
   isQuitting = true
+  await flushAllSessions()
 })
 
 export { mainWindow }

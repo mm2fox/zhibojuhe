@@ -25,7 +25,18 @@
       <el-divider />
 
       <div class="login-area">
-        <div v-if="!isLoggingIn" class="login-prompt">
+        <div v-if="existingAccount" class="already-logged-in">
+          <el-alert type="success" :closable="false">
+            <template #title>
+              已登录账号: {{ existingAccount.nickname || '未设置昵称' }}
+            </template>
+          </el-alert>
+          <div class="account-actions">
+            <el-button type="danger" @click="removeAccount">移除账号并重新登录</el-button>
+          </div>
+        </div>
+        
+        <div v-else-if="!isLoggingIn" class="login-prompt">
           <p>点击下方按钮开始登录</p>
           <p class="hint">登录成功后会自动保存账号信息</p>
           <el-button type="primary" size="large" @click="startLogin">
@@ -46,15 +57,6 @@
             <el-button type="primary" @click="extractCookiesFromWebview">提取登录信息</el-button>
           </div>
         </div>
-      </div>
-
-      <div v-if="existingAccount" class="existing-account">
-        <el-alert type="info" :closable="false">
-          <template #title>
-            已登录账号: {{ existingAccount.nickname || '未设置昵称' }}
-          </template>
-        </el-alert>
-        <el-button type="danger" text @click="removeAccount">移除账号</el-button>
       </div>
     </el-card>
   </div>
@@ -100,6 +102,12 @@ function selectPlatform(platform: Platform) {
 }
 
 async function startLogin() {
+  if (existingAccount.value) {
+    await removeAccount()
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+  
+  await window.api.platform.clearCookies(selectedPlatform.value)
   isLoggingIn.value = true
   await nextTick()
   setTimeout(() => {
@@ -175,10 +183,10 @@ function setupWebviewEvents() {
 function verifyLogin(platform: Platform, cookieString: string): { isLoggedIn: boolean; reason: string } {
   switch (platform) {
     case 'huya': {
-      const hasUid = cookieString.includes('yyuid=')
+      const hasUid = cookieString.includes('yyuid=') || cookieString.includes('uid=') || cookieString.includes('userName')
       return {
         isLoggedIn: hasUid,
-        reason: hasUid ? '' : '未检测到虎牙用户ID (yyuid)'
+        reason: hasUid ? '' : '未检测到虎牙用户信息，请确保已完成登录'
       }
     }
     case 'douyin': {
@@ -193,7 +201,7 @@ function verifyLogin(platform: Platform, cookieString: string): { isLoggedIn: bo
       }
     }
     case 'douyu': {
-      const hasUid = cookieString.includes('acf_uid=') || cookieString.includes('dy_username=')
+      const hasUid = cookieString.includes('acf_uid=') || cookieString.includes('dy_username=') || cookieString.includes('acf_auth=')
       return {
         isLoggedIn: hasUid,
         reason: hasUid ? '' : '未检测到斗鱼用户ID (acf_uid/dy_username)'
@@ -230,33 +238,24 @@ async function extractCookiesFromWebview() {
     `
 
     loginWebviewRef.value.executeJavaScript(script).then(async (result: any) => {
-      if (result && result.success && result.cookies) {
-        const cookieString = result.cookies
-        if (!cookieString || cookieString.length === 0) {
-          ElMessage.error('未检测到任何Cookie，请确保已成功登录')
-          return
-        }
+      if (result && result.success) {
+        const platform = selectedPlatform.value
+        
+        await new Promise(resolve => setTimeout(resolve, 500))
 
-        console.log('Extracted cookies for', result.platform, ':', cookieString.substring(0, 100) + '...')
+        const sessionCookies = await window.api.platform.extractCookies(platform)
+        const allCookies = sessionCookies.cookies || result.cookies || ''
 
-        const verification = verifyLogin(selectedPlatform.value, cookieString)
+        const verification = verifyLogin(platform, allCookies)
 
         if (!verification.isLoggedIn) {
           ElMessage.error(verification.reason)
           return
         }
 
-        const platform = selectedPlatform.value
-
-        await window.api.platform.injectCookies(platform, cookieString)
-
-        const cookiesFromSession = await window.api.platform.extractCookies(platform)
-
-        const finalCookies = cookiesFromSession.cookies || cookieString
-
         await accountStore.saveAccount({
           platform: platform,
-          cookies: finalCookies,
+          cookies: allCookies,
           nickname: '',
           status: 'active',
           loginTime: Date.now(),
@@ -281,8 +280,11 @@ async function extractCookiesFromWebview() {
 
 async function removeAccount() {
   if (existingAccount.value) {
+    const platform = existingAccount.value.platform
     await accountStore.deleteAccount(existingAccount.value.id)
-    ElMessage.success('账号已移除')
+    await window.api.platform.clearCookies(platform)
+    ElMessage.success('账号已移除，请重新登录')
+    await accountStore.loadAccounts()
   }
 }
 
@@ -295,15 +297,19 @@ watch(selectedPlatform, () => {
 .login-page {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   padding: 20px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  align-items: center;
+  min-height: 0;
 }
 
 .login-card {
   width: 100%;
-  max-width: 600px;
+  max-width: 800px;
+  margin: 0 auto;
+  flex-shrink: 0;
 }
 
 .card-header {
@@ -351,9 +357,10 @@ watch(selectedPlatform, () => {
 
   webview {
     width: 100%;
-    height: 400px;
+    height: 600px;
     border: 1px solid var(--border-color);
     border-radius: 4px;
+    overflow: auto;
   }
 }
 
@@ -363,10 +370,12 @@ watch(selectedPlatform, () => {
   gap: 12px;
 }
 
-.existing-account {
+.already-logged-in {
+  text-align: center;
+  padding: 20px 0;
+}
+
+.account-actions {
   margin-top: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 </style>

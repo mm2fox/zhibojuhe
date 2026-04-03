@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios from './axios-config'
 import type { FollowedAnchor, Platform } from '../../preload'
 
 export class DouyinAPI {

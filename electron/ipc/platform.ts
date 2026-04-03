@@ -33,24 +33,11 @@ export function registerPlatformIPC() {
 
   ipcMain.handle('platform:extractCookies', async (_event, platform: Platform) => {
     try {
-      const url = platformUrls[platform].home
       const partition = `persist:${platform}`
       const partitionSession = session.fromPartition(partition)
-
       const allCookies = await partitionSession.cookies.get({})
-      
-      const domainCookies = allCookies.filter(c => {
-        const domain = c.domain || ''
-        return domain.includes('douyu') || domain.includes('huya') || domain.includes('douyin') || 
-               domain === '.www.douyu.com' || domain === '.douyu.com' ||
-               domain === 'www.douyu.com' || domain === 'douyu.com'
-      })
-      
-      const cookieString = domainCookies.map(c => `${c.name}=${c.value}`).join('; ')
-
-      console.log(`[${platform}] Extracted ${domainCookies.length} cookies from partition ${partition} (total: ${allCookies.length})`)
-
-      return { success: true, cookies: cookieString }
+      const cookieString = allCookies.map(c => `${c.name}=${c.value}`).join('; ')
+      return { success: true, cookies: cookieString, count: allCookies.length }
     } catch (error) {
       console.error(`[${platform}] Failed to extract cookies:`, error)
       return { success: false, error: String(error) }
@@ -105,10 +92,10 @@ export function registerPlatformIPC() {
         console.log(`[${platform}] Failed cookies: ${failedCookies.join(', ')}`)
       }
       
-      const verifyCookies = await partitionSession.cookies.get({ domain: domain })
-      console.log(`[${platform}] Verified ${verifyCookies.length} cookies in session for domain ${domain}`)
+      const allCookies = await partitionSession.cookies.get({})
+      console.log(`[${platform}] Total cookies in session: ${allCookies.length}`)
       
-      return { success: true, injected: successCount, failed: failCount, verified: verifyCookies.length }
+      return { success: true, injected: successCount, failed: failCount, total: allCookies.length }
     } catch (error) {
       console.error(`[${platform}] Failed to inject cookies:`, error)
       return { success: false, error: String(error) }
@@ -128,6 +115,38 @@ export function registerPlatformIPC() {
       return { success: true, cookies: cookieString }
     } catch (error) {
       console.error(`[${platform}] Failed to extract cookies from partition:`, error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('platform:clearCookies', async (_event, platform: Platform) => {
+    try {
+      const partition = `persist:${platform}`
+      const partitionSession = session.fromPartition(partition)
+      
+      const allCookies = await partitionSession.cookies.get({})
+      console.log(`[${platform}] Clearing ${allCookies.length} cookies from partition ${partition}`)
+      
+      const hostname = new URL(platformUrls[platform].home).hostname
+      
+      console.log(`[${platform}] Clearing cookies for hostname: ${hostname}`)
+      
+      for (const cookie of allCookies) {
+        try {
+          const domain = cookie.domain || ''
+          const cookieUrl = `https://${domain.startsWith('.') ? domain.slice(1) : domain}${cookie.path || '/'}`
+          await partitionSession.cookies.remove(cookieUrl, cookie.name)
+        } catch (err) {
+          console.log(`[${platform}] Failed to remove cookie ${cookie.name}:`, err)
+        }
+      }
+      
+      const remainingCookies = await partitionSession.cookies.get({})
+      console.log(`[${platform}] Cleared cookies, ${remainingCookies.length} remaining`)
+      
+      return { success: true, cleared: allCookies.length, remaining: remainingCookies.length }
+    } catch (error) {
+      console.error(`[${platform}] Failed to clear cookies:`, error)
       return { success: false, error: String(error) }
     }
   })

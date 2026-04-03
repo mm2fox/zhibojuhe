@@ -1,5 +1,5 @@
-import axios from 'axios'
-import type { FollowedAnchor, Platform } from '../preload'
+import axios from './axios-config'
+import type { FollowedAnchor, Platform } from '../../preload'
 
 export class HuyaAPI {
   private static BASE_URL = 'https://www.huya.com'
