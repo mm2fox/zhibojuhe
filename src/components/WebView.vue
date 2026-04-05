@@ -77,6 +77,16 @@ const dockerCookieInjected = ref<Set<string>>(new Set())
 const webviewEventsSet = ref<Set<string>>(new Set())
 const pendingMuteState = ref<Map<string, boolean>>(new Map())
 const isBackgroundRefresh = ref(false)
+const lastExtractionTime = ref<Record<Platform, number>>({
+  huya: 0,
+  douyin: 0,
+  douyu: 0
+})
+const extractionId = ref<Record<Platform, number>>({
+  huya: 0,
+  douyin: 0,
+  douyu: 0
+})
 
 const platformUrls: Record<Platform, string> = {
   huya: 'https://www.huya.com/myfollow',
@@ -171,7 +181,6 @@ function setWebviewRef(id: string, el: any) {
     if (tab) {
       try {
         el.setAudioMuted(tab.muted !== false)
-        console.log(`[Docker ${id}] Initial mute state set: ${tab.muted !== false}`)
       } catch (error) {
         // Webview not ready yet, will be set in events
       }
@@ -340,21 +349,15 @@ async function extractFollowsFromWebview(webview: Electron.WebviewTag, platform:
               var liHtml = li.outerHTML || '';
               var liClass = li.className || '';
               
-              // 只检查明确的直播标识
-              // 1. 检查文本标识
               if (liHtml.indexOf('直播中') !== -1 || liHtml.indexOf('正在直播') !== -1) isLive = true;
-              
-              // 2. 检查明确的直播 class
               if (liClass.indexOf('is-live') !== -1 || liClass.indexOf('on-live') !== -1) isLive = true;
               
-              // 3. 检查直播徽章元素
               var liveBadge = li.querySelector('.live-badge, .live-tag, .LiveBadge');
               if (liveBadge) {
                 var badgeText = liveBadge.textContent || '';
                 if (badgeText.indexOf('直播') !== -1 || badgeText === 'LIVE') isLive = true;
               }
               
-              // 4. 检查是否有直播状态图标（通常是红色圆点）
               var liveIcon = li.querySelector('.live-icon, .icon-live, [class*="liveIcon"]');
               if (liveIcon) isLive = true;
               
@@ -443,8 +446,6 @@ async function extractFollowsFromWebview(webview: Electron.WebviewTag, platform:
           try {
             var follows = [];
             
-            console.log('[Douyu WebView] Starting extraction...');
-            
             var selectors = [
               'li.DyListCover-item',
               '.follow-list li',
@@ -461,18 +462,14 @@ async function extractFollowsFromWebview(webview: Electron.WebviewTag, platform:
             for (var i = 0; i < selectors.length; i++) {
               var items = document.querySelectorAll(selectors[i]);
               if (items.length > 0) {
-                console.log('[Douyu WebView] Found ' + items.length + ' items with selector: ' + selectors[i]);
                 liItems = items;
                 break;
               }
             }
             
             if (liItems.length === 0) {
-              console.log('[Douyu WebView] No items found, trying broader search...');
               liItems = document.querySelectorAll('li');
             }
-            
-            console.log('[Douyu WebView] Processing ' + liItems.length + ' li items');
             
             liItems.forEach(function(li) {
               var link = li.querySelector('a[href*="douyu.com/"]');
@@ -527,10 +524,8 @@ async function extractFollowsFromWebview(webview: Electron.WebviewTag, platform:
               });
             });
             
-            console.log('[Douyu WebView] Extracted ' + follows.length + ' follows');
             resolve({ success: true, follows: follows, count: follows.length });
           } catch (error) {
-            console.error('[Douyu WebView] Error:', error.message);
             resolve({ success: false, follows: [], error: error.message });
           }
         });
@@ -627,7 +622,6 @@ function setupMainWebviewEvents(webview: Electron.WebviewTag, platform: Platform
   function applyMainMuteState() {
     try {
       webview.setAudioMuted(true)
-      console.log(`[Main ${platform}] Mute state applied: true`)
     } catch (error) {
       // Webview not ready, ignore
     }
@@ -645,6 +639,13 @@ function setupMainWebviewEvents(webview: Electron.WebviewTag, platform: Platform
   webview.addEventListener('did-stop-loading', async () => {
     mainLoading.value = false
     setTimeout(applyMainMuteState, 100)
+
+    const now = Date.now()
+    const timeSinceLastExtraction = now - lastExtractionTime.value[platform]
+    
+    if (timeSinceLastExtraction < 10000) {
+      return
+    }
 
     if (!cookieInjected.value[platform]) {
       const sessionCookies = await window.api.platform.extractCookies(platform)
@@ -664,7 +665,13 @@ function setupMainWebviewEvents(webview: Electron.WebviewTag, platform: Platform
       }
     }
 
+    lastExtractionTime.value[platform] = now
+    const currentExtractionId = ++extractionId.value[platform]
     await new Promise(resolve => setTimeout(resolve, 3000))
+    
+    if (extractionId.value[platform] !== currentExtractionId) {
+      return
+    }
     
     if (platform === 'huya' || platform === 'douyu') {
       await new Promise(resolve => setTimeout(resolve, 2000))
@@ -672,10 +679,13 @@ function setupMainWebviewEvents(webview: Electron.WebviewTag, platform: Platform
       await new Promise(resolve => setTimeout(resolve, 1000))
     }
     
+    if (extractionId.value[platform] !== currentExtractionId) {
+      return
+    }
+    
     await extractFollowsFromWebview(webview, platform)
     
     if (isBackgroundRefresh.value) {
-      console.log(`[Main ${platform}] Background refresh completed, hiding webview`)
       isBackgroundRefresh.value = false
     }
   })
@@ -741,7 +751,7 @@ onMounted(async () => {
   window.addEventListener('refresh-follows', async (event: Event) => {
     const customEvent = event as CustomEvent<{ platform: Platform }>
     const platform = customEvent.detail?.platform || currentPlatform.value
-    console.log('[WebView] refresh-follows event received for platform:', platform)
+    extractionId.value[platform]++
     dockerStore.setActiveTab(null)
     isBackgroundRefresh.value = true
     const webview = mainWebviewRefs.value[platform]
@@ -763,6 +773,16 @@ onMounted(async () => {
     if (webview) {
       webview.setAudioMuted(muted)
     }
+  }) as EventListener)
+
+  window.addEventListener('docker-tab-selected', ((event: CustomEvent) => {
+    const { tabId } = event.detail
+    dockerStore.setActiveTab(tabId)
+  }) as EventListener)
+
+  window.addEventListener('cancel-extraction', ((event: CustomEvent) => {
+    const { platform } = event.detail
+    extractionId.value[platform]++
   }) as EventListener)
 
   window.api.docker.onTabSwitched((tabId: string) => {
@@ -820,6 +840,7 @@ onUnmounted(() => {
   window.removeEventListener('refresh-follows', () => {})
   window.removeEventListener('docker-cleared', () => {})
   window.removeEventListener('docker-mute-changed', () => {})
+  window.removeEventListener('cancel-extraction', () => {})
   window.api.docker.removeTabSwitchedListener()
   window.api.docker.removeMuteToggledListener()
   window.api.docker.removeTabClosedListener()

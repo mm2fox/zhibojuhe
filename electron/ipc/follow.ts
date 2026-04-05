@@ -11,7 +11,6 @@ export function registerFollowIPC() {
   ipcMain.handle('follow:getByPlatform', async (_event, platform: Platform) => {
     try {
       const list = db.getFollowsByPlatform(platform)
-      console.log(`[follow:getByPlatform] Returning ${list?.length || 0} follows for ${platform}`)
       return list
     } catch (error) {
       console.error('Failed to get follows:', error)
@@ -94,9 +93,10 @@ export function registerFollowIPC() {
   ipcMain.handle('follow:updateFromWebview', async (_event, platform: Platform, anchorsJson: string) => {
     try {
       const anchors = JSON.parse(anchorsJson) as FollowedAnchor[]
-      db.deleteFollowsByPlatform(platform)
+      if (anchors.length === 0) {
+        return { success: true, count: 0 }
+      }
       db.saveFollows(anchors)
-      console.log(`[${platform}] Replaced with ${anchors.length} follows from webview`)
       return { success: true, count: anchors.length }
     } catch (error) {
       console.error('Failed to update follows from webview:', error)

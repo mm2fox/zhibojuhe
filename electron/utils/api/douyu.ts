@@ -63,9 +63,9 @@ export class DouyuAPI {
       return data.data.list.map((item: any) => ({
         id: `douyu-${item.room_id}`,
         platform: 'douyu' as Platform,
-        anchorId: String(item.uid),
-        nickname: item.nickname,
-        avatar: item.avatar,
+        anchorId: String(item.uid || item.room_id || ''),
+        nickname: item.nickname || '',
+        avatar: item.avatar || '',
         roomId: String(item.room_id),
         isLive: item.show_status === 1 || item.isLive === 1 || item.room_status === '1',
         viewerCount: item.online || 0,

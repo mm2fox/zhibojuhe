@@ -67,6 +67,7 @@ function getLiveCount(platform: Platform): number {
 
 async function refreshFollows() {
   const platform = currentPlatform.value
+  window.dispatchEvent(new CustomEvent('cancel-extraction', { detail: { platform } }))
   const result = await followStore.refreshFollows(platform)
   
   if (result.success && result.anchors && result.anchors.length > 0) {
