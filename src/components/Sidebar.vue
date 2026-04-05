@@ -67,17 +67,12 @@ function getLiveCount(platform: Platform): number {
 
 async function refreshFollows() {
   const platform = currentPlatform.value
-  console.log('[Sidebar] Refreshing follows for:', platform)
-  
   const result = await followStore.refreshFollows(platform)
-  console.log('[Sidebar] API refresh result:', result)
   
   if (result.success && result.anchors && result.anchors.length > 0) {
-    console.log('[Sidebar] API returned', result.anchors.length, 'follows')
     return
   }
   
-  console.log('[Sidebar] API returned empty, trying WebView refresh')
   window.dispatchEvent(new CustomEvent('refresh-follows', { detail: { platform } }))
 }
 
@@ -86,11 +81,8 @@ function goToSettings() {
 }
 
 function handleFollowsUpdated(event: CustomEvent) {
-  const { platform, count } = event.detail
-  console.log('[Sidebar] Follows updated:', platform, count)
-  followStore.loadFollows(platform).then(() => {
-    console.log('[Sidebar] loadFollows completed, follows count:', followStore.follows[platform]?.length)
-  })
+  const { platform } = event.detail
+  followStore.loadFollows(platform)
 }
 
 onMounted(() => {

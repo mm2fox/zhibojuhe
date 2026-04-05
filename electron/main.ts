@@ -234,6 +234,12 @@ function createWindow() {
     } else if (input.key === 'w' && input.control) {
       closeCurrentTab()
       event.preventDefault()
+    } else if (input.key === 'r' && input.control) {
+      const docker = dockerStore.get('docker')
+      if (docker.tabs.length > 0 && docker.activeTabId) {
+        mainWindow?.webContents.send('docker:refresh-tab', docker.activeTabId)
+        event.preventDefault()
+      }
     }
   })
 
@@ -253,6 +259,12 @@ function createWindow() {
         } else if (input.key === 'w' && input.control) {
           closeCurrentTab()
           event.preventDefault()
+        } else if (input.key === 'r' && input.control) {
+          const docker = dockerStore.get('docker')
+          if (docker.tabs.length > 0 && docker.activeTabId) {
+            mainWindow?.webContents.send('docker:refresh-tab', docker.activeTabId)
+            event.preventDefault()
+          }
         }
       })
     }

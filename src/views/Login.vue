@@ -173,11 +173,37 @@ function handleNewWindow(event: any) {
   }
 }
 
+function applyMuteState() {
+  if (!loginWebviewRef.value) return
+  try {
+    loginWebviewRef.value.setAudioMuted(true)
+    console.log('[Login] Mute state applied: true')
+  } catch (error) {
+    console.log('[Login] Failed to set mute state:', error)
+  }
+}
+
 function setupWebviewEvents() {
   if (!loginWebviewRef.value) return
   
   loginWebviewRef.value.addEventListener('will-navigate', handleWillNavigate)
   loginWebviewRef.value.addEventListener('new-window', handleNewWindow)
+  
+  loginWebviewRef.value.addEventListener('dom-ready', () => {
+    setTimeout(applyMuteState, 100)
+  })
+  
+  loginWebviewRef.value.addEventListener('did-start-loading', applyMuteState)
+  
+  loginWebviewRef.value.addEventListener('did-stop-loading', () => {
+    setTimeout(applyMuteState, 100)
+  })
+  
+  loginWebviewRef.value.addEventListener('did-start-navigation', () => {
+    setTimeout(applyMuteState, 100)
+  })
+  
+  applyMuteState()
 }
 
 function verifyLogin(platform: Platform, cookieString: string): { isLoggedIn: boolean; reason: string } {
@@ -264,7 +290,6 @@ async function extractCookiesFromWebview() {
 
         ElMessage.success('登录成功！')
         isLoggingIn.value = false
-        router.push('/')
       } else {
         ElMessage.error('获取登录信息失败，请确保已完成登录')
       }

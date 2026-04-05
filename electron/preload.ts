@@ -125,6 +125,12 @@ const api = {
     },
     removeTabClosedListener: () => {
       ipcRenderer.removeAllListeners('docker:tab-closed')
+    },
+    onTabRefresh: (callback: (tabId: string) => void) => {
+      ipcRenderer.on('docker:refresh-tab', (_event, tabId) => callback(tabId))
+    },
+    removeTabRefreshListener: () => {
+      ipcRenderer.removeAllListeners('docker:refresh-tab')
     }
   }
 }

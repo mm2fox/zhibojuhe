@@ -32,7 +32,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed } from 'vue'
 import { useFollowStore } from '@/stores/follow'
 import { useAccountStore } from '@/stores/account'
 import AnchorCard from './AnchorCard.vue'
@@ -46,17 +46,9 @@ const followStore = useFollowStore()
 const accountStore = useAccountStore()
 
 const loading = computed(() => followStore.loading)
-const list = computed(() => {
-  const result = followStore.follows[props.platform]
-  console.log('[FollowList] list computed for', props.platform, ':', result?.length || 0)
-  return result || []
-})
+const list = computed(() => followStore.follows[props.platform] || [])
 const liveAnchors = computed(() => followStore.getLiveAnchors(props.platform))
 const offlineAnchors = computed(() => followStore.getOfflineAnchors(props.platform))
-
-watch(() => followStore.follows[props.platform], (newVal) => {
-  console.log('[FollowList] follows changed for', props.platform, ':', newVal?.length || 0)
-}, { deep: true })
 
 function goToRoom(anchor: FollowedAnchor) {
   accountStore.setCurrentPlatform(props.platform)

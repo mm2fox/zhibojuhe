@@ -25,15 +25,17 @@ interface Window {
       switch: (platform: import('../electron/preload').Platform) => void
       getCurrent: () => Promise<import('../electron/preload').Platform>
       getLoginUrl: (platform: import('../electron/preload').Platform) => Promise<string>
-      extractCookies: (platform: import('../electron/preload').Platform) => Promise<{ success: boolean; cookies?: string; error?: string }>
+      extractCookies: (platform: import('../electron/preload').Platform) => Promise<{ success: boolean; cookies?: string; error?: string; count?: number }>
       injectCookies: (platform: import('../electron/preload').Platform, cookies: string) => Promise<{ success: boolean; error?: string }>
       getCookiesFromPartition: (platform: import('../electron/preload').Platform, partition: string) => Promise<{ success: boolean; cookies?: string; error?: string }>
+      clearCookies: (platform: import('../electron/preload').Platform) => Promise<{ success: boolean; error?: string }>
     }
     follow: {
       getByPlatform: (platform: import('../electron/preload').Platform) => Promise<import('../electron/preload').FollowedAnchor[]>
       refresh: (platform: import('../electron/preload').Platform) => Promise<{ success: boolean; anchors?: import('../electron/preload').FollowedAnchor[]; error?: string }>
       getLiveStatus: (platform: import('../electron/preload').Platform, anchorIds: string[]) => Promise<{ anchorId: string; isLive: boolean; viewerCount: number }[]>
       save: (anchors: import('../electron/preload').FollowedAnchor[]) => Promise<{ success: boolean; error?: string }>
+      updateFromWebview: (platform: import('../electron/preload').Platform, anchorsJson: string) => Promise<{ success: boolean; error?: string }>
     }
     settings: {
       get: () => Promise<import('../electron/preload').AppSettings>
@@ -47,6 +49,15 @@ interface Window {
       removeTab: (id: string) => Promise<{ success: boolean; docker: import('../electron/preload').DockerData }>
       setActiveTab: (id: string | null) => Promise<{ success: boolean; docker: import('../electron/preload').DockerData }>
       toggleCollapse: () => Promise<{ success: boolean; docker: import('../electron/preload').DockerData }>
+      toggleMute: (id: string) => Promise<{ success: boolean; docker: import('../electron/preload').DockerData; muted?: boolean }>
+      onTabSwitched: (callback: (tabId: string) => void) => void
+      removeTabSwitchedListener: () => void
+      onMuteToggled: (callback: (tabId: string, muted: boolean) => void) => void
+      removeMuteToggledListener: () => void
+      onTabClosed: (callback: (tabId: string) => void) => void
+      removeTabClosedListener: () => void
+      onTabRefresh: (callback: (tabId: string) => void) => void
+      removeTabRefreshListener: () => void
     }
   }
 }

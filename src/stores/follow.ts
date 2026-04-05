@@ -10,17 +10,18 @@ export const useFollowStore = defineStore('follow', () => {
   })
   const loading = ref(false)
 
+  function updateFollows(platform: Platform, list: FollowedAnchor[]) {
+    follows.value = {
+      ...follows.value,
+      [platform]: list
+    }
+  }
+
   async function loadFollows(platform: Platform) {
     loading.value = true
     try {
-      console.log('[FollowStore] Loading follows for', platform)
       const list = await window.api.follow.getByPlatform(platform)
-      console.log('[FollowStore] Got list:', list?.length || 0, 'items')
-      
-      follows.value[platform] = list || []
-      
-      console.log('[FollowStore] After update, follows[' + platform + ']:', follows.value[platform].length)
-      console.log('[FollowStore] Full follows object:', JSON.stringify(Object.keys(follows.value).map(k => `${k}:${follows.value[k as Platform].length}`)))
+      updateFollows(platform, list || [])
     } catch (error) {
       console.error('[FollowStore] Failed to load follows:', error)
     } finally {
@@ -33,7 +34,7 @@ export const useFollowStore = defineStore('follow', () => {
     try {
       const result = await window.api.follow.refresh(platform)
       if (result.success && result.anchors) {
-        follows.value[platform] = result.anchors
+        updateFollows(platform, result.anchors)
       }
       return result
     } catch (error) {
@@ -54,11 +55,13 @@ export const useFollowStore = defineStore('follow', () => {
   }
 
   function getLiveAnchors(platform: Platform) {
-    return follows.value[platform].filter(a => a.isLive)
+    const list = follows.value[platform] || []
+    return list.filter(a => a.isLive)
   }
 
   function getOfflineAnchors(platform: Platform) {
-    return follows.value[platform].filter(a => !a.isLive)
+    const list = follows.value[platform] || []
+    return list.filter(a => !a.isLive)
   }
 
   return {

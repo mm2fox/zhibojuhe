@@ -11,7 +11,7 @@
         :src="platformUrls[platform]"
         :partition="`persist:${platform}`"
         allowpopups
-        v-show="currentPlatform === platform"
+        v-show="currentPlatform === platform && !isBackgroundRefresh"
       ></webview>
       <div v-if="mainLoading && currentPlatform === platform" class="loading-overlay">
         <el-icon class="loading-icon"><Loading /></el-icon>
@@ -76,6 +76,7 @@ const cookieInjected = ref<Record<Platform, boolean>>({
 const dockerCookieInjected = ref<Set<string>>(new Set())
 const webviewEventsSet = ref<Set<string>>(new Set())
 const pendingMuteState = ref<Map<string, boolean>>(new Map())
+const isBackgroundRefresh = ref(false)
 
 const platformUrls: Record<Platform, string> = {
   huya: 'https://www.huya.com/myfollow',
@@ -286,7 +287,31 @@ async function extractFollowsFromWebview(webview: Electron.WebviewTag, platform:
         return new Promise(function(resolve) {
           try {
             var follows = [];
-            var liItems = document.querySelectorAll('ul.live-list > li, .live-list li, [class*="follow-list"] li');
+            var uniqueRooms = new Map();
+            
+            var selectors = [
+              'ul.live-list > li',
+              '.live-list li',
+              '[class*="follow-list"] li',
+              '.follow-list-item',
+              '[class*="subscribe"] li',
+              '.subscribe-list li',
+              '.my-follow-list li',
+              'li[class*="item"]'
+            ];
+            
+            var liItems = [];
+            for (var i = 0; i < selectors.length; i++) {
+              var items = document.querySelectorAll(selectors[i]);
+              if (items.length > 0) {
+                liItems = items;
+                break;
+              }
+            }
+            
+            if (liItems.length === 0) {
+              liItems = document.querySelectorAll('li');
+            }
             
             liItems.forEach(function(li) {
               var link = li.querySelector('a[href*="huya.com/"]');
@@ -298,17 +323,42 @@ async function extractFollowsFromWebview(webview: Electron.WebviewTag, platform:
               if (roomIdMatch) roomId = roomIdMatch[1];
               if (!roomId || roomId.length < 2) return;
               
-              var nameEl = li.querySelector('[title], .name, .nick, .anchor-name');
+              if (uniqueRooms.has(roomId)) return;
+              
+              var nameEl = li.querySelector('[title], .name, .nick, .anchor-name, .txt, [class*="name"]');
               var name = nameEl ? (nameEl.getAttribute('title') || nameEl.textContent.trim()) : '';
-              if (!name) return;
+              if (!name) {
+                var titleAttr = li.getAttribute('title');
+                if (titleAttr) name = titleAttr;
+              }
+              if (!name || name.length > 50) return;
               
               var avatarEl = li.querySelector('img');
               var avatar = avatarEl ? (avatarEl.src || avatarEl.getAttribute('data-src') || '') : '';
               
               var isLive = false;
               var liHtml = li.outerHTML || '';
+              var liClass = li.className || '';
+              
+              // 只检查明确的直播标识
+              // 1. 检查文本标识
               if (liHtml.indexOf('直播中') !== -1 || liHtml.indexOf('正在直播') !== -1) isLive = true;
-              if (li.querySelector('.is-live, [class*="isLive"]')) isLive = true;
+              
+              // 2. 检查明确的直播 class
+              if (liClass.indexOf('is-live') !== -1 || liClass.indexOf('on-live') !== -1) isLive = true;
+              
+              // 3. 检查直播徽章元素
+              var liveBadge = li.querySelector('.live-badge, .live-tag, .LiveBadge');
+              if (liveBadge) {
+                var badgeText = liveBadge.textContent || '';
+                if (badgeText.indexOf('直播') !== -1 || badgeText === 'LIVE') isLive = true;
+              }
+              
+              // 4. 检查是否有直播状态图标（通常是红色圆点）
+              var liveIcon = li.querySelector('.live-icon, .icon-live, [class*="liveIcon"]');
+              if (liveIcon) isLive = true;
+              
+              uniqueRooms.set(roomId, true);
               
               follows.push({
                 id: 'huya-' + roomId,
@@ -499,7 +549,7 @@ async function extractFollowsFromWebview(webview: Electron.WebviewTag, platform:
       }))
     }
   } catch (error) {
-    // Webview not ready or navigation in progress, ignore
+    console.error(`[WebView] extractFollowsFromWebview error for ${platform}:`, error)
   }
 }
 
@@ -574,12 +624,27 @@ function setupDockerWebviewEvents(webview: Electron.WebviewTag, tabId: string) {
 }
 
 function setupMainWebviewEvents(webview: Electron.WebviewTag, platform: Platform) {
+  function applyMainMuteState() {
+    try {
+      webview.setAudioMuted(true)
+      console.log(`[Main ${platform}] Mute state applied: true`)
+    } catch (error) {
+      // Webview not ready, ignore
+    }
+  }
+  
+  webview.addEventListener('dom-ready', () => {
+    setTimeout(applyMainMuteState, 100)
+  })
+  
   webview.addEventListener('did-start-loading', () => {
     mainLoading.value = true
+    applyMainMuteState()
   })
 
   webview.addEventListener('did-stop-loading', async () => {
     mainLoading.value = false
+    setTimeout(applyMainMuteState, 100)
 
     if (!cookieInjected.value[platform]) {
       const sessionCookies = await window.api.platform.extractCookies(platform)
@@ -608,10 +673,16 @@ function setupMainWebviewEvents(webview: Electron.WebviewTag, platform: Platform
     }
     
     await extractFollowsFromWebview(webview, platform)
+    
+    if (isBackgroundRefresh.value) {
+      console.log(`[Main ${platform}] Background refresh completed, hiding webview`)
+      isBackgroundRefresh.value = false
+    }
   })
 
   webview.addEventListener('did-finish-load', () => {
     mainLoading.value = false
+    setTimeout(applyMainMuteState, 100)
   })
 
   webview.addEventListener('did-fail-load', (event: any) => {
@@ -630,10 +701,13 @@ function setupMainWebviewEvents(webview: Electron.WebviewTag, platform: Platform
   })
 
   webview.addEventListener('did-start-navigation', (event: any) => {
+    setTimeout(applyMainMuteState, 100)
     if (handleExternalProtocol(event.url)) {
       webview.stop()
     }
   })
+  
+  applyMainMuteState()
 }
 
 watch(currentPlatform, () => {
@@ -664,11 +738,15 @@ onMounted(async () => {
   
   window.addEventListener('navigate-to-room', handleNavigateToRoom as EventListener)
   
-  window.addEventListener('refresh-follows', async () => {
+  window.addEventListener('refresh-follows', async (event: Event) => {
+    const customEvent = event as CustomEvent<{ platform: Platform }>
+    const platform = customEvent.detail?.platform || currentPlatform.value
+    console.log('[WebView] refresh-follows event received for platform:', platform)
     dockerStore.setActiveTab(null)
-    const webview = mainWebviewRefs.value[currentPlatform.value]
+    isBackgroundRefresh.value = true
+    const webview = mainWebviewRefs.value[platform]
     if (webview) {
-      webview.src = platformUrls[currentPlatform.value]
+      webview.src = platformUrls[platform]
     }
   })
   
@@ -728,6 +806,13 @@ onMounted(async () => {
       }
     }
   })
+
+  window.api.docker.onTabRefresh((tabId: string) => {
+    const webview = webviewRefs.value.get(tabId)
+    if (webview) {
+      webview.reload()
+    }
+  })
 })
 
 onUnmounted(() => {
@@ -738,6 +823,7 @@ onUnmounted(() => {
   window.api.docker.removeTabSwitchedListener()
   window.api.docker.removeMuteToggledListener()
   window.api.docker.removeTabClosedListener()
+  window.api.docker.removeTabRefreshListener()
 })
 </script>
 
