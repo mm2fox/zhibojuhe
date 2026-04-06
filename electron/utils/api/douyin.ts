@@ -35,6 +35,7 @@ export class DouyinAPI {
         roomId: item.room_id || '',
         isLive: item.live_status === 1,
         viewerCount: item.live_info?.user_count || 0,
+        followerCount: item.follower_count || item.fansCount || item.fans || 0,
         liveTitle: item.live_info?.title || '',
         liveCover: item.live_info?.cover?.url_list?.[0] || '',
         updateTime: Date.now()

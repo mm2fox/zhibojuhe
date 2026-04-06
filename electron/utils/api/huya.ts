@@ -111,6 +111,7 @@ export class HuyaAPI {
       roomId: String(item.profileRoom || item.roomId || item.room_id || item.rid || ''),
       isLive: item.isLive === true || item.liveStatus === 1 || item.isOn === true,
       viewerCount: item.activityCount || item.popularity || item.online || item.count || 0,
+      followerCount: item.fansCount || item.fans || item.followerCount || item.followers || 0,
       liveTitle: item.introduction || item.title || item.roomName || '',
       liveCover: item.screenshot || item.cover || item.thumb || '',
       updateTime: Date.now()
@@ -217,6 +218,7 @@ export class HuyaAPI {
       roomId: String(item.profileRoom || item.roomId || item.room_id || item.rid || ''),
       isLive: item.isLive === true || item.liveStatus === 1 || item.isOn === true || item.live === true,
       viewerCount: item.activityCount || item.popularity || item.online || item.count || 0,
+      followerCount: item.fansCount || item.fans || item.followerCount || item.followers || 0,
       liveTitle: item.introduction || item.title || item.roomName || '',
       liveCover: item.screenshot || item.cover || item.thumb || '',
       updateTime: Date.now()
@@ -303,8 +305,8 @@ export class HuyaAPI {
       })
 
       const data = response.data
+      
       if (data.status !== 200 || !data.data) {
-        console.log('[Huya] getLiveStatus error:', data.status, data.message)
         return []
       }
 
@@ -319,10 +321,20 @@ export class HuyaAPI {
                          roomInfo.status === 'on' ||
                          roomInfo.status === 1
           
+          const viewerCount = roomInfo.activityCount || 
+                              roomInfo.popularity || 
+                              roomInfo.online || 
+                              roomInfo.count || 
+                              roomInfo.hot || 
+                              roomInfo.viewers ||
+                              roomInfo.num ||
+                              roomInfo.userNum ||
+                              0
+          
           result.push({
-            anchorId: String(roomInfo.uid || roomId),
+            anchorId: roomId,
             isLive: isLive,
-            viewerCount: roomInfo.activityCount || roomInfo.popularity || roomInfo.online || 0
+            viewerCount: viewerCount
           })
         } else {
           result.push({

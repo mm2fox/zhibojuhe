@@ -23,6 +23,7 @@ export interface FollowedAnchor {
   secUid?: string
   isLive: boolean
   viewerCount?: number
+  followerCount?: number
   liveTitle?: string
   liveCover?: string
   updateTime: number

@@ -69,6 +69,7 @@ export class DouyuAPI {
         roomId: String(item.room_id),
         isLive: item.show_status === 1 || item.isLive === 1 || item.room_status === '1',
         viewerCount: item.online || 0,
+        followerCount: item.fans || item.followerCount || item.fansCount || 0,
         liveTitle: item.room_name || '',
         liveCover: item.room_src || '',
         updateTime: Date.now()

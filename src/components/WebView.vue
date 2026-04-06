@@ -361,6 +361,32 @@ async function extractFollowsFromWebview(webview: Electron.WebviewTag, platform:
               var liveIcon = li.querySelector('.live-icon, .icon-live, [class*="liveIcon"]');
               if (liveIcon) isLive = true;
               
+              // Extract viewer count
+              var viewerCount = 0;
+              var countEl = li.querySelector('.num, .count, .viewer-count, .hot, [class*="num"], [class*="count"], [class*="hot"]');
+              if (countEl) {
+                var countText = countEl.textContent.trim();
+                var countMatch = countText.match(/[\\d.]+/);
+                if (countMatch) {
+                  var num = parseFloat(countMatch[0]);
+                  if (countText.indexOf('万') !== -1) {
+                    viewerCount = Math.floor(num * 10000);
+                  } else {
+                    viewerCount = Math.floor(num);
+                  }
+                }
+              }
+              if (!viewerCount) {
+                var numMatch = liHtml.match(/([\\d.]+)\\s*万|([\\d]+)\\s*人/);
+                if (numMatch) {
+                  if (numMatch[1]) {
+                    viewerCount = Math.floor(parseFloat(numMatch[1]) * 10000);
+                  } else if (numMatch[2]) {
+                    viewerCount = parseInt(numMatch[2]);
+                  }
+                }
+              }
+              
               uniqueRooms.set(roomId, true);
               
               follows.push({
@@ -371,7 +397,7 @@ async function extractFollowsFromWebview(webview: Electron.WebviewTag, platform:
                 avatar: avatar,
                 roomId: roomId,
                 isLive: isLive,
-                viewerCount: 0,
+                viewerCount: viewerCount,
                 liveTitle: '',
                 liveCover: '',
                 updateTime: Date.now()

@@ -13,6 +13,10 @@
           <el-icon><View /></el-icon>
           {{ formatViewerCount(anchor.viewerCount) }}
         </span>
+        <span v-if="anchor.followerCount" class="follower-count">
+          <el-icon><User /></el-icon>
+          {{ formatViewerCount(anchor.followerCount) }}
+        </span>
         <span v-if="anchor.liveTitle" class="title">{{ anchor.liveTitle }}</span>
       </div>
     </div>
@@ -32,6 +36,7 @@
 <script setup lang="ts">
 import { computed, toRaw } from 'vue'
 import { useDockerStore } from '@/stores/docker'
+import { User } from '@element-plus/icons-vue'
 import type { FollowedAnchor } from '../../electron/preload'
 
 const props = defineProps<{
@@ -45,7 +50,8 @@ const showAddToDocker = computed(() => {
   return !dockerStore.tabs.find(t => t.id === tabId)
 })
 
-function formatViewerCount(count: number): string {
+function formatViewerCount(count?: number): string {
+  if (!count) return '0'
   if (count >= 10000) {
     return (count / 10000).toFixed(1) + '万'
   }
@@ -146,6 +152,12 @@ function addToDocker() {
 }
 
 .viewer-count {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.follower-count {
   display: flex;
   align-items: center;
   gap: 2px;
