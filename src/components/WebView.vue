@@ -643,7 +643,7 @@ function setupMainWebviewEvents(webview: Electron.WebviewTag, platform: Platform
     const now = Date.now()
     const timeSinceLastExtraction = now - lastExtractionTime.value[platform]
     
-    if (timeSinceLastExtraction < 10000) {
+    if (timeSinceLastExtraction < 10000 && !isBackgroundRefresh.value) {
       return
     }
 
@@ -751,7 +751,7 @@ onMounted(async () => {
   window.addEventListener('refresh-follows', async (event: Event) => {
     const customEvent = event as CustomEvent<{ platform: Platform }>
     const platform = customEvent.detail?.platform || currentPlatform.value
-    extractionId.value[platform]++
+    lastExtractionTime.value[platform] = 0
     dockerStore.setActiveTab(null)
     isBackgroundRefresh.value = true
     const webview = mainWebviewRefs.value[platform]

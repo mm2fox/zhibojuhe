@@ -70,7 +70,7 @@ async function refreshFollows() {
   window.dispatchEvent(new CustomEvent('cancel-extraction', { detail: { platform } }))
   const result = await followStore.refreshFollows(platform)
   
-  if (result.success && result.anchors && result.anchors.length > 0) {
+  if (result.success && result.anchors && result.anchors.length > 0 && !result.fromCache) {
     return
   }
   

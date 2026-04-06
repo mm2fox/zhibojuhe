@@ -96,6 +96,7 @@ export function registerFollowIPC() {
       if (anchors.length === 0) {
         return { success: true, count: 0 }
       }
+      db.deleteFollowsByPlatform(platform)
       db.saveFollows(anchors)
       return { success: true, count: anchors.length }
     } catch (error) {
