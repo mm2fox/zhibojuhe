@@ -40,6 +40,42 @@ export function registerFollowIPC() {
       }
 
       if (anchors.length > 0) {
+        const roomIds = anchors.map(a => a.roomId).filter(id => id)
+        let liveStatusMap = new Map<string, { isLive: boolean; viewerCount: number }>()
+        
+        if (roomIds.length > 0) {
+          let liveStatusResult: { anchorId: string; isLive: boolean; viewerCount: number }[] = []
+          
+          switch (platform) {
+            case 'huya':
+              liveStatusResult = await HuyaAPI.getLiveStatus(account.cookies, roomIds)
+              break
+            case 'douyin':
+              liveStatusResult = await DouyinAPI.getLiveStatus(account.cookies, roomIds)
+              break
+            case 'douyu':
+              liveStatusResult = await DouyuAPI.getLiveStatus(account.cookies, roomIds)
+              break
+          }
+          
+          for (const status of liveStatusResult) {
+            liveStatusMap.set(status.anchorId, { isLive: status.isLive, viewerCount: status.viewerCount })
+          }
+        }
+        
+        anchors = anchors.map(anchor => {
+          const status = liveStatusMap.get(anchor.roomId) || liveStatusMap.get(anchor.anchorId)
+          if (status) {
+            return {
+              ...anchor,
+              isLive: status.isLive,
+              viewerCount: status.viewerCount,
+              updateTime: Date.now()
+            }
+          }
+          return anchor
+        })
+        
         db.deleteFollowsByPlatform(platform)
         db.saveFollows(anchors)
         return { success: true, anchors }

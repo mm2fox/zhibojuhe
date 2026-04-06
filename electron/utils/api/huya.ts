@@ -274,7 +274,71 @@ export class HuyaAPI {
   }
 
   static async getLiveStatus(cookies: string, anchorIds: string[]): Promise<{ anchorId: string; isLive: boolean; viewerCount: number }[]> {
-    return []
+    if (!anchorIds || anchorIds.length === 0) {
+      return []
+    }
+
+    try {
+      console.log('[Huya] Getting live status for', anchorIds.length, 'anchors')
+
+      const roomIds = anchorIds.filter(id => /^\d+$/.test(id))
+      if (roomIds.length === 0) {
+        return []
+      }
+
+      const response = await axios.get('https://www.huya.com/cache.php', {
+        headers: {
+          'Cookie': cookies,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://www.huya.com/',
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
+        },
+        params: {
+          m: 'Live',
+          do: 'profileRoom',
+          roomIds: roomIds.join(',')
+        },
+        timeout: 15000
+      })
+
+      const data = response.data
+      if (data.status !== 200 || !data.data) {
+        console.log('[Huya] getLiveStatus error:', data.status, data.message)
+        return []
+      }
+
+      const result: { anchorId: string; isLive: boolean; viewerCount: number }[] = []
+      
+      for (const roomId of roomIds) {
+        const roomInfo = data.data[roomId]
+        if (roomInfo) {
+          const isLive = roomInfo.liveStatus === 'on' || 
+                         roomInfo.liveStatus === 1 || 
+                         roomInfo.liveStatus === '1' ||
+                         roomInfo.status === 'on' ||
+                         roomInfo.status === 1
+          
+          result.push({
+            anchorId: String(roomInfo.uid || roomId),
+            isLive: isLive,
+            viewerCount: roomInfo.activityCount || roomInfo.popularity || roomInfo.online || 0
+          })
+        } else {
+          result.push({
+            anchorId: roomId,
+            isLive: false,
+            viewerCount: 0
+          })
+        }
+      }
+
+      console.log('[Huya] Live status result:', result.filter(r => r.isLive).length, 'live,', result.length, 'total')
+      return result
+    } catch (error: any) {
+      console.error('[Huya] Failed to get live status:', error.message)
+      return []
+    }
   }
 
   static getRoomUrl(roomId: string): string {

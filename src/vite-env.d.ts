@@ -32,7 +32,7 @@ interface Window {
     }
     follow: {
       getByPlatform: (platform: import('../electron/preload').Platform) => Promise<import('../electron/preload').FollowedAnchor[]>
-      refresh: (platform: import('../electron/preload').Platform) => Promise<{ success: boolean; anchors?: import('../electron/preload').FollowedAnchor[]; error?: string }>
+      refresh: (platform: import('../electron/preload').Platform) => Promise<{ success: boolean; anchors?: import('../electron/preload').FollowedAnchor[]; error?: string; fromCache?: boolean }>
       getLiveStatus: (platform: import('../electron/preload').Platform, anchorIds: string[]) => Promise<{ anchorId: string; isLive: boolean; viewerCount: number }[]>
       save: (anchors: import('../electron/preload').FollowedAnchor[]) => Promise<{ success: boolean; error?: string }>
       updateFromWebview: (platform: import('../electron/preload').Platform, anchorsJson: string) => Promise<{ success: boolean; error?: string }>
