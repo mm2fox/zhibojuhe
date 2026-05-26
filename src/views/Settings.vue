@@ -35,6 +35,7 @@
             <el-option :value="5" label="5 分钟" />
             <el-option :value="10" label="10 分钟" />
             <el-option :value="30" label="30 分钟" />
+            <el-option :value="60" label="1 小时" />
           </el-select>
         </el-form-item>
 

@@ -82,24 +82,36 @@ async function refreshFollowListForPlatform(platform: Platform): Promise<{ succe
   return { success: true, anchors: [], fromCache: false }
 }
 
+async function backgroundRefreshLiveStatusOnly(platform: Platform): Promise<{ success: boolean; anchors: FollowedAnchor[] }> {
+  const cachedFollows = db.getFollowsByPlatform(platform)
+  if (cachedFollows.length === 0) {
+    return { success: true, anchors: [] }
+  }
+
+  const updatedCached = await refreshLiveStatusForPlatform(platform, cachedFollows)
+  db.saveFollows(updatedCached)
+  return { success: true, anchors: updatedCached }
+}
+
 function startBackgroundRefresh(platform: Platform, intervalMs: number) {
   stopBackgroundRefresh(platform)
 
   const timer = setInterval(async () => {
-    console.log(`[BackgroundRefresh] Refreshing ${platform}...`)
+    console.log(`[BackgroundRefreshing] Refreshing live status for ${platform}...`)
     try {
-      const result = await refreshFollowListForPlatform(platform)
-      if (result.success && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('follow:backgroundRefreshed', platform, result.anchors, result.fromCache)
-        console.log(`[BackgroundRefresh] ${platform} refreshed: ${result.anchors.length} anchors${result.fromCache ? ' (cache+status updated)' : ''}`)
+      const result = await backgroundRefreshLiveStatusOnly(platform)
+      if (result.success && result.anchors.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('follow:backgroundRefreshed', platform, result.anchors, true)
+        const liveCount = result.anchors.filter(a => a.isLive).length
+        console.log(`[BackgroundRefreshing] ${platform} live status updated: ${result.anchors.length} anchors, ${liveCount} live`)
       }
     } catch (error) {
-      console.error(`[BackgroundRefresh] Failed to refresh ${platform}:`, error)
+      console.error(`[BackgroundRefreshing] Failed to refresh live status for ${platform}:`, error)
     }
   }, intervalMs)
 
   backgroundRefreshTimers.set(platform, timer)
-  console.log(`[BackgroundRefresh] Started for ${platform}, interval: ${intervalMs / 60000} minutes`)
+  console.log(`[BackgroundRefreshing] Started for ${platform}, interval: ${intervalMs / 60000} minutes`)
 }
 
 function stopBackgroundRefresh(platform: Platform) {

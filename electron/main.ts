@@ -395,7 +395,6 @@ app.whenReady().then(async () => {
   registerAllIPC()
   
   await restoreCookiesFromDatabase()
-  startAllBackgroundRefresh()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -409,10 +408,16 @@ function startAllBackgroundRefresh() {
   if (!settings.autoRefreshFollow) return
   const intervalMs = settings.refreshInterval * 60 * 1000
   const platforms: Platform[] = ['huya', 'douyin', 'douyu', 'bilibili']
-  for (const platform of platforms) {
-    startBackgroundRefresh(platform, intervalMs)
-  }
+  platforms.forEach((platform, index) => {
+    setTimeout(() => {
+      startBackgroundRefresh(platform, intervalMs)
+    }, index * 5000)
+  })
 }
+
+setTimeout(() => {
+  startAllBackgroundRefresh()
+}, 3000)
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
