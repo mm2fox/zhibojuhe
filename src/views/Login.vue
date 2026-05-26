@@ -76,7 +76,8 @@ const accountStore = useAccountStore()
 const platforms = [
   { id: 'huya' as Platform, name: '虎牙' },
   { id: 'douyin' as Platform, name: '抖音' },
-  { id: 'douyu' as Platform, name: '斗鱼' }
+  { id: 'douyu' as Platform, name: '斗鱼' },
+  { id: 'bilibili' as Platform, name: 'B站' }
 ]
 
 const selectedPlatform = ref<Platform>('huya')
@@ -86,7 +87,8 @@ const loginWebviewRef = ref<Electron.WebviewTag | null>(null)
 const loginUrls: Record<Platform, string> = {
   huya: 'https://www.huya.com',
   douyin: 'https://www.douyin.com',
-  douyu: 'https://www.douyu.com'
+  douyu: 'https://www.douyu.com',
+  bilibili: 'https://live.bilibili.com'
 }
 
 const loginUrl = computed(() => loginUrls[selectedPlatform.value])
@@ -231,6 +233,13 @@ function verifyLogin(platform: Platform, cookieString: string): { isLoggedIn: bo
       return {
         isLoggedIn: hasUid,
         reason: hasUid ? '' : '未检测到斗鱼用户ID (acf_uid/dy_username)'
+      }
+    }
+    case 'bilibili': {
+      const hasUid = cookieString.includes('DedeUserID=') || cookieString.includes('bili_jct=') || cookieString.includes('SESSDATA=')
+      return {
+        isLoggedIn: hasUid,
+        reason: hasUid ? '' : '未检测到B站用户信息 (DedeUserID/bili_jct/SESSDATA)'
       }
     }
     default:

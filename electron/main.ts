@@ -3,9 +3,10 @@ import { join } from 'path'
 import { registerAccountIPC } from './ipc/account'
 import { registerSettingsIPC } from './ipc/settings'
 import { registerPlatformIPC } from './ipc/platform'
-import { registerFollowIPC } from './ipc/follow'
+import { registerFollowIPC, startBackgroundRefresh, stopAllBackgroundRefresh } from './ipc/follow'
 import { registerDockerIPC } from './ipc/docker'
 import { getSettings } from './store'
+import type { Platform } from './preload'
 import Store from 'electron-store'
 
 app.commandLine.appendSwitch('disable-features', 'WebRTC')
@@ -394,6 +395,7 @@ app.whenReady().then(async () => {
   registerAllIPC()
   
   await restoreCookiesFromDatabase()
+  startAllBackgroundRefresh()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -401,6 +403,16 @@ app.whenReady().then(async () => {
     }
   })
 })
+
+function startAllBackgroundRefresh() {
+  const settings = getSettings()
+  if (!settings.autoRefreshFollow) return
+  const intervalMs = settings.refreshInterval * 60 * 1000
+  const platforms: Platform[] = ['huya', 'douyin', 'douyu', 'bilibili']
+  for (const platform of platforms) {
+    startBackgroundRefresh(platform, intervalMs)
+  }
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -410,6 +422,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', async () => {
   isQuitting = true
+  stopAllBackgroundRefresh()
   await flushAllSessions()
 })
 

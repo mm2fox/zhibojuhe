@@ -13,6 +13,10 @@ const platformUrls: Record<Platform, { login: string; home: string }> = {
   douyu: {
     login: 'https://www.douyu.com/',
     home: 'https://www.douyu.com/'
+  },
+  bilibili: {
+    login: 'https://live.bilibili.com/',
+    home: 'https://live.bilibili.com/'
   }
 }
 
@@ -58,6 +62,8 @@ export function registerPlatformIPC() {
         domain = '.huya.com'
       } else if (platform === 'douyu') {
         domain = '.douyu.com'
+      } else if (platform === 'bilibili') {
+        domain = '.bilibili.com'
       }
 
       console.log(`[${platform}] Injecting cookies to partition: ${partition}, domain: ${domain}`)

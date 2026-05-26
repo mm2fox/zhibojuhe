@@ -145,6 +145,13 @@ onMounted(async () => {
   await accountStore.loadAccounts()
   dockerStore.loadDocker()
   startAutoRefresh()
+  window.api.follow.onBackgroundRefreshed((platform, anchors, fromCache) => {
+    if (anchors && anchors.length > 0) {
+      followStore.updateFollows(platform, anchors)
+      followStore.setRefreshTime(platform)
+      console.log(`[App] Background refresh updated ${platform}: ${anchors.length} anchors${fromCache ? ' (cache+status)' : ''}`)
+    }
+  })
 })
 
 onUnmounted(() => {
@@ -152,6 +159,7 @@ onUnmounted(() => {
     clearTimeout(hideTimer)
   }
   stopAutoRefresh()
+  window.api.follow.removeBackgroundRefreshedListener()
 })
 </script>
 

@@ -9,6 +9,9 @@
     <svg v-else-if="platform === 'douyu'" :width="size" :height="size" viewBox="0 0 24 24">
       <path :fill="color" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
     </svg>
+    <svg v-else-if="platform === 'bilibili'" :width="size" :height="size" viewBox="0 0 24 24">
+      <path :fill="color" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15h-2v-2h2v2zm4 0h-2v-2h2v2zm-2-4h-2V7h2v6z"/>
+    </svg>
   </div>
 </template>
 

@@ -36,6 +36,11 @@ interface Window {
       getLiveStatus: (platform: import('../electron/preload').Platform, anchorIds: string[]) => Promise<{ anchorId: string; isLive: boolean; viewerCount: number }[]>
       save: (anchors: import('../electron/preload').FollowedAnchor[]) => Promise<{ success: boolean; error?: string }>
       updateFromWebview: (platform: import('../electron/preload').Platform, anchorsJson: string) => Promise<{ success: boolean; error?: string }>
+      startBackgroundRefresh: (platform: import('../electron/preload').Platform, intervalMs: number) => void
+      stopBackgroundRefresh: (platform: import('../electron/preload').Platform) => void
+      stopAllBackgroundRefresh: () => void
+      onBackgroundRefreshed: (callback: (platform: import('../electron/preload').Platform, anchors: import('../electron/preload').FollowedAnchor[], fromCache: boolean) => void) => void
+      removeBackgroundRefreshedListener: () => void
     }
     settings: {
       get: () => Promise<import('../electron/preload').AppSettings>

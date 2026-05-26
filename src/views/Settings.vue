@@ -82,7 +82,8 @@ const accounts = computed(() => accountStore.accounts)
 const platformNames: Record<Platform, string> = {
   huya: '虎牙',
   douyin: '抖音',
-  douyu: '斗鱼'
+  douyu: '斗鱼',
+  bilibili: 'B站'
 }
 
 function getPlatformName(platform: Platform): string {

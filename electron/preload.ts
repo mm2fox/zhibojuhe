@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
-export type Platform = 'huya' | 'douyin' | 'douyu'
+export type Platform = 'huya' | 'douyin' | 'douyu' | 'bilibili'
 
 export interface PlatformAccount {
   id: string
@@ -92,7 +92,16 @@ const api = {
     refresh: (platform: Platform) => ipcRenderer.invoke('follow:refresh', platform),
     getLiveStatus: (platform: Platform, anchorIds: string[]) => ipcRenderer.invoke('follow:getLiveStatus', platform, anchorIds),
     save: (anchors: FollowedAnchor[]) => ipcRenderer.invoke('follow:save', anchors),
-    updateFromWebview: (platform: Platform, anchorsJson: string) => ipcRenderer.invoke('follow:updateFromWebview', platform, anchorsJson)
+    updateFromWebview: (platform: Platform, anchorsJson: string) => ipcRenderer.invoke('follow:updateFromWebview', platform, anchorsJson),
+    startBackgroundRefresh: (platform: Platform, intervalMs: number) => ipcRenderer.send('follow:startBackgroundRefresh', platform, intervalMs),
+    stopBackgroundRefresh: (platform: Platform) => ipcRenderer.send('follow:stopBackgroundRefresh', platform),
+    stopAllBackgroundRefresh: () => ipcRenderer.send('follow:stopAllBackgroundRefresh'),
+    onBackgroundRefreshed: (callback: (platform: Platform, anchors: FollowedAnchor[], fromCache: boolean) => void) => {
+      ipcRenderer.on('follow:backgroundRefreshed', (_event, platform, anchors, fromCache) => callback(platform, anchors, fromCache))
+    },
+    removeBackgroundRefreshedListener: () => {
+      ipcRenderer.removeAllListeners('follow:backgroundRefreshed')
+    }
   },
 
   settings: {

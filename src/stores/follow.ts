@@ -6,14 +6,28 @@ export const useFollowStore = defineStore('follow', () => {
   const follows = ref<Record<Platform, FollowedAnchor[]>>({
     huya: [],
     douyin: [],
-    douyu: []
+    douyu: [],
+    bilibili: []
   })
   const loading = ref(false)
+  const lastRefreshTime = ref<Record<Platform, number>>({
+    huya: 0,
+    douyin: 0,
+    douyu: 0,
+    bilibili: 0
+  })
 
   function updateFollows(platform: Platform, list: FollowedAnchor[]) {
     follows.value = {
       ...follows.value,
       [platform]: list
+    }
+  }
+
+  function setRefreshTime(platform: Platform) {
+    lastRefreshTime.value = {
+      ...lastRefreshTime.value,
+      [platform]: Date.now()
     }
   }
 
@@ -67,8 +81,11 @@ export const useFollowStore = defineStore('follow', () => {
   return {
     follows,
     loading,
+    lastRefreshTime,
     loadFollows,
     refreshFollows,
+    updateFollows,
+    setRefreshTime,
     getLiveStatus,
     getLiveAnchors,
     getOfflineAnchors

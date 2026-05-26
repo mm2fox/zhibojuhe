@@ -19,9 +19,12 @@
     <div class="follow-section">
       <div class="section-header">
         <span>关注列表</span>
-        <el-button link @click="refreshFollows" :loading="followStore.loading">
-          <el-icon><Refresh /></el-icon>
-        </el-button>
+        <div class="header-actions">
+          <span v-if="lastRefreshText" class="refresh-time">{{ lastRefreshText }}</span>
+          <el-button link @click="refreshFollows" :loading="followStore.loading">
+            <el-icon><Refresh /></el-icon>
+          </el-button>
+        </div>
       </div>
       <FollowList :platform="currentPlatform" />
     </div>
@@ -51,10 +54,22 @@ const followStore = useFollowStore()
 const platforms = [
   { id: 'huya' as Platform, name: '虎牙' },
   { id: 'douyin' as Platform, name: '抖音' },
-  { id: 'douyu' as Platform, name: '斗鱼' }
+  { id: 'douyu' as Platform, name: '斗鱼' },
+  { id: 'bilibili' as Platform, name: 'B站' }
 ]
 
 const currentPlatform = computed(() => accountStore.currentPlatform)
+
+const lastRefreshText = computed(() => {
+  const ts = followStore.lastRefreshTime[currentPlatform.value]
+  if (!ts) return ''
+  const diff = Math.floor((Date.now() - ts) / 1000)
+  if (diff < 10) return '刚刚'
+  if (diff < 60) return `${diff}秒前`
+  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`
+  const d = new Date(ts)
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+})
 
 function selectPlatform(platform: Platform) {
   accountStore.setCurrentPlatform(platform)
@@ -69,6 +84,7 @@ async function refreshFollows() {
   const platform = currentPlatform.value
   window.dispatchEvent(new CustomEvent('cancel-extraction', { detail: { platform } }))
   const result = await followStore.refreshFollows(platform)
+  followStore.setRefreshTime(platform)
   
   if (result.success && result.anchors && result.anchors.length > 0 && !result.fromCache) {
     return
@@ -156,6 +172,19 @@ onUnmounted(() => {
   font-size: 13px;
   color: var(--text-color);
   opacity: 0.7;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.refresh-time {
+  font-size: 11px;
+  color: var(--text-color);
+  opacity: 0.5;
+  white-space: nowrap;
 }
 
 .sidebar-footer {

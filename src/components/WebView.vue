@@ -11,7 +11,7 @@
         :src="platformUrls[platform]"
         :partition="`persist:${platform}`"
         allowpopups
-        v-show="currentPlatform === platform && !isBackgroundRefresh"
+        v-show="currentPlatform === platform"
       ></webview>
       <div v-if="mainLoading && currentPlatform === platform" class="loading-overlay">
         <el-icon class="loading-icon"><Loading /></el-icon>
@@ -47,11 +47,24 @@
         allowpopups
       ></webview>
     </div>
+
+    <div
+      v-if="backgroundRefreshPlatform"
+      :key="backgroundRefreshKey"
+      class="webview-wrapper background-refresh-webview"
+    >
+      <webview
+        :ref="setBackgroundRefreshWebviewRef"
+        :src="platformUrls[backgroundRefreshPlatform]"
+        :partition="`persist:${backgroundRefreshPlatform}`"
+        allowpopups
+      ></webview>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAccountStore } from '@/stores/account'
 import { useDockerStore } from '@/stores/docker'
 import PlatformIcon from './PlatformIcon.vue'
@@ -76,7 +89,6 @@ const cookieInjected = ref<Record<Platform, boolean>>({
 const dockerCookieInjected = ref<Set<string>>(new Set())
 const webviewEventsSet = ref<Set<string>>(new Set())
 const pendingMuteState = ref<Map<string, boolean>>(new Map())
-const isBackgroundRefresh = ref(false)
 const lastExtractionTime = ref<Record<Platform, number>>({
   huya: 0,
   douyin: 0,
@@ -87,6 +99,10 @@ const extractionId = ref<Record<Platform, number>>({
   douyin: 0,
   douyu: 0
 })
+const backgroundRefreshPlatform = ref<Platform | null>(null)
+const backgroundRefreshWebviewRef = ref<Electron.WebviewTag | null>(null)
+const backgroundRefreshExtractionId = ref(0)
+const backgroundRefreshKey = ref(0)
 
 const platformUrls: Record<Platform, string> = {
   huya: 'https://www.huya.com/myfollow',
@@ -669,7 +685,7 @@ function setupMainWebviewEvents(webview: Electron.WebviewTag, platform: Platform
     const now = Date.now()
     const timeSinceLastExtraction = now - lastExtractionTime.value[platform]
     
-    if (timeSinceLastExtraction < 10000 && !isBackgroundRefresh.value) {
+    if (timeSinceLastExtraction < 10000) {
       return
     }
 
@@ -710,10 +726,6 @@ function setupMainWebviewEvents(webview: Electron.WebviewTag, platform: Platform
     }
     
     await extractFollowsFromWebview(webview, platform)
-    
-    if (isBackgroundRefresh.value) {
-      isBackgroundRefresh.value = false
-    }
   })
 
   webview.addEventListener('did-finish-load', () => {
@@ -744,6 +756,112 @@ function setupMainWebviewEvents(webview: Electron.WebviewTag, platform: Platform
   })
   
   applyMainMuteState()
+}
+
+function setBackgroundRefreshWebviewRef(el: any) {
+  if (el) {
+    backgroundRefreshWebviewRef.value = el
+    setupBackgroundRefreshWebviewEvents(el)
+  }
+}
+
+function setupBackgroundRefreshWebviewEvents(webview: Electron.WebviewTag) {
+  const platform = backgroundRefreshPlatform.value!
+  const refreshId = backgroundRefreshExtractionId.value
+  
+  let cookieInjected = false
+  let isProcessing = false
+
+  const cleanup = () => {
+    if (backgroundRefreshExtractionId.value === refreshId) {
+      backgroundRefreshPlatform.value = null
+    }
+  }
+
+  webview.addEventListener('dom-ready', () => {
+    try {
+      webview.setAudioMuted(true)
+    } catch (error) {
+      // ignore
+    }
+  })
+
+  webview.addEventListener('did-stop-loading', async () => {
+    if (isProcessing) return
+    if (backgroundRefreshExtractionId.value !== refreshId) {
+      cleanup()
+      return
+    }
+
+    try {
+      webview.setAudioMuted(true)
+    } catch (error) {
+      // ignore
+    }
+
+    if (!cookieInjected) {
+      const sessionCookies = await window.api.platform.extractCookies(platform)
+      const sessionCookieCount = sessionCookies.count || 0
+      const hasSessionCookies = sessionCookieCount > 5
+      
+      if (!hasSessionCookies) {
+        const account = accountStore.accounts.find(a => a.platform === platform)
+        if (account && account.cookies) {
+          await window.api.platform.injectCookies(platform, account.cookies)
+          cookieInjected = true
+          webview.reload()
+          return
+        }
+      } else {
+        cookieInjected = true
+      }
+    }
+
+    isProcessing = true
+
+    await new Promise(resolve => setTimeout(resolve, 3000))
+    
+    if (backgroundRefreshExtractionId.value !== refreshId) {
+      cleanup()
+      return
+    }
+    
+    if (platform === 'huya' || platform === 'douyu') {
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      await scrollToLoadMore(webview)
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+    
+    if (backgroundRefreshExtractionId.value !== refreshId) {
+      cleanup()
+      return
+    }
+    
+    await extractFollowsFromWebview(webview, platform)
+    
+    cleanup()
+  })
+
+  webview.addEventListener('did-fail-load', (event: any) => {
+    console.error('[WebView] Background refresh webview failed to load:', event)
+    cleanup()
+  })
+
+  webview.addEventListener('will-navigate', (event: any) => {
+    if (handleExternalProtocol(event.url)) {
+      event.preventDefault()
+    }
+  })
+
+  webview.addEventListener('new-window', (event: any) => {
+    event.preventDefault()
+  })
+
+  try {
+    webview.setAudioMuted(true)
+  } catch (error) {
+    // ignore
+  }
 }
 
 watch(currentPlatform, () => {
@@ -778,12 +896,10 @@ onMounted(async () => {
     const customEvent = event as CustomEvent<{ platform: Platform }>
     const platform = customEvent.detail?.platform || currentPlatform.value
     lastExtractionTime.value[platform] = 0
-    dockerStore.setActiveTab(null)
-    isBackgroundRefresh.value = true
-    const webview = mainWebviewRefs.value[platform]
-    if (webview) {
-      webview.src = platformUrls[platform]
-    }
+    
+    backgroundRefreshExtractionId.value++
+    backgroundRefreshKey.value++
+    backgroundRefreshPlatform.value = platform
   })
   
   window.addEventListener('docker-cleared', () => {
@@ -1087,6 +1203,18 @@ webview {
   font-size: 32px;
   color: var(--primary-color);
   animation: spin 1s linear infinite;
+}
+
+.background-refresh-webview {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -9999;
+  overflow: hidden;
 }
 
 @keyframes spin {
