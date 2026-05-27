@@ -2,8 +2,6 @@ import axios from './axios-config'
 import type { FollowedAnchor, Platform } from '../../preload'
 
 export class HuyaAPI {
-  private static BASE_URL = 'https://www.huya.com'
-
   static async getFollowList(cookies: string): Promise<FollowedAnchor[]> {
     try {
       const yyuidMatch = cookies.match(/yyuid=(\d+)/)

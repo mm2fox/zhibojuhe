@@ -67,7 +67,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useSettingsStore } from '@/stores/settings'
 import { useAccountStore } from '@/stores/account'
 import PlatformIcon from '@/components/PlatformIcon.vue'
-import type { Platform, PlatformAccount } from '../../electron/preload'
+import type { Platform } from '../../electron/preload'
 
 const settingsStore = useSettingsStore()
 const accountStore = useAccountStore()

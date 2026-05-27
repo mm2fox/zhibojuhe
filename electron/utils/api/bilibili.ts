@@ -2,8 +2,6 @@ import axios from './axios-config'
 import type { FollowedAnchor, Platform } from '../../preload'
 
 export class BilibiliAPI {
-  private static BASE_URL = 'https://live.bilibili.com'
-
   static async getFollowList(cookies: string): Promise<FollowedAnchor[]> {
     try {
       console.log('[Bilibili] Fetching follow list from myfollow page...')

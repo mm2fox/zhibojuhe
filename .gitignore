@@ -8,3 +8,4 @@ release-new/
 .vscode/
 .idea/
 *.local
+/*.html

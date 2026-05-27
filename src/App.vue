@@ -51,7 +51,7 @@ const settingsStore = useSettingsStore()
 const dockerStore = useDockerStore()
 const followStore = useFollowStore()
 const accountStore = useAccountStore()
-const isDark = computed(() => settingsStore.theme === 'dark')
+const isDark = computed(() => settingsStore.settings.theme === 'dark')
 
 const sidebarCollapsed = ref(false)
 let hideTimer: ReturnType<typeof setTimeout> | null = null

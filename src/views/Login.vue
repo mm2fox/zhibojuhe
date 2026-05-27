@@ -64,13 +64,11 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from '@/stores/account'
 import PlatformIcon from '@/components/PlatformIcon.vue'
 import type { Platform } from '../../electron/preload'
 
-const router = useRouter()
 const accountStore = useAccountStore()
 
 const platforms = [
@@ -162,17 +160,16 @@ function handleWillNavigate(event: any) {
 }
 
 function handleNewWindow(event: any) {
-  const url = event.url || event.disposition || ''
+  const url = event.url || ''
   console.log('[Login] new-window request:', url)
   
-  if (typeof url === 'string' && handleExternalProtocol(url)) {
+  if (handleExternalProtocol(url)) {
     event.preventDefault()
+    try { loginWebviewRef.value && loginWebviewRef.value.stop() } catch (e) { /* ignore */ }
     return
   }
   
-  if (event.preventDefault) {
-    event.preventDefault()
-  }
+  event.preventDefault()
 }
 
 function applyMuteState() {
@@ -193,6 +190,30 @@ function setupWebviewEvents() {
   
   loginWebviewRef.value.addEventListener('dom-ready', () => {
     setTimeout(applyMuteState, 100)
+    try {
+      if (!loginWebviewRef.value) return
+      loginWebviewRef.value.executeJavaScript(`
+        (function() {
+          var blockProtocols = ['bytedance://', 'aweme://', 'snssdk://', 'toutiao://', 'xigua://'];
+          window.open = function(url) {
+            if (url && blockProtocols.some(function(p) { return url.toLowerCase().startsWith(p); })) {
+              console.log('[Blocked] window.open blocked:', url);
+              return null;
+            }
+            return null;
+          };
+          var links = document.querySelectorAll('a[href]');
+          links.forEach(function(a) {
+            var href = a.getAttribute('href') || '';
+            if (blockProtocols.some(function(p) { return href.toLowerCase().startsWith(p); })) {
+              a.removeAttribute('href');
+              a.style.pointerEvents = 'none';
+              a.style.opacity = '0.5';
+            }
+          });
+        })();
+      `)
+    } catch (e) { /* ignore */ }
   })
   
   loginWebviewRef.value.addEventListener('did-start-loading', applyMuteState)

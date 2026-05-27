@@ -1,6 +1,7 @@
 {
   "appId": "com.livestream.account-manager",
   "productName": "直播平台账号聚合管理器",
+  "asar": false,
   "directories": {
     "output": "release-new"
   },

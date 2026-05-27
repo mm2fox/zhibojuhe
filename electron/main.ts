@@ -169,12 +169,7 @@ function closeCurrentTab() {
 
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 
-function getResourcePath(...paths: string[]): string {
-  if (VITE_DEV_SERVER_URL) {
-    return join(__dirname, ...paths)
-  }
-  return join(__dirname, ...paths)
-}
+
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -217,6 +212,20 @@ function createWindow() {
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    const externalProtocols = [
+      'bytedance://', 'aweme://', 'snssdk://', 'toutiao://', 'xigua://',
+      'weixin://', 'alipays://', 'mqq://', 'mqqwpa://', 'mttbrowser://',
+      'baiduboxapp://', 'sinaweibo://'
+    ]
+    
+    const lowerUrl = url.toLowerCase()
+    const isExternal = externalProtocols.some(p => lowerUrl.startsWith(p))
+    
+    if (isExternal) {
+      console.log('[Main] Blocked external protocol from main window:', url)
+      return { action: 'deny' }
+    }
+    
     shell.openExternal(url)
     return { action: 'deny' }
   })
@@ -268,12 +277,31 @@ function createWindow() {
           }
         }
       })
+
+      contents.setWindowOpenHandler(({ url }) => {
+        const externalProtocols = [
+          'bytedance://', 'aweme://', 'snssdk://', 'toutiao://', 'xigua://',
+          'weixin://', 'alipays://', 'mqq://', 'mqqwpa://', 'mttbrowser://',
+          'baiduboxapp://', 'sinaweibo://'
+        ]
+        
+        const lowerUrl = url.toLowerCase()
+        const isExternal = externalProtocols.some(p => lowerUrl.startsWith(p))
+        
+        if (isExternal) {
+          console.log('[Main] Blocked external protocol:', url)
+          return { action: 'deny' }
+        }
+        
+        return { action: 'deny' }
+      })
     }
   })
 }
 
 function createTray() {
-  let icon: nativeImage
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let icon: any
   
   const iconSize = process.platform === 'win32' ? 16 : 22
   
@@ -390,6 +418,50 @@ function registerWindowIPC() {
 }
 
 app.whenReady().then(async () => {
+  const EXTERNAL_PROTOCOLS = [
+    'bytedance://', 'aweme://', 'snssdk://', 'toutiao://', 'xigua://',
+    'weixin://', 'alipays://', 'mqq://', 'mqqwpa://', 'mttbrowser://',
+    'baiduboxapp://', 'sinaweibo://', 'imeituan://', 'meituanwaimai://',
+    'alipay://', 'weixin://', 'qqmap://', 'iosamap://', 'baidumap://'
+  ]
+
+  const shouldBlockUrl = (url: string): boolean => {
+    const lowerUrl = url.toLowerCase().trim()
+    return EXTERNAL_PROTOCOLS.some(p => lowerUrl.startsWith(p))
+  }
+
+  const sessions = [
+    session.defaultSession,
+    ...['persist:huya', 'persist:douyin', 'persist:douyu', 'persist:bilibili'].map(p => session.fromPartition(p))
+  ]
+
+  for (const sess of sessions) {
+    if (sess && sess.webRequest) {
+      sess.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
+        if (shouldBlockUrl(details.url)) {
+          console.log('[Session] Blocked via webRequest:', details.url)
+          callback({ cancel: true })
+          return
+        }
+        callback({ cancel: false })
+      })
+    }
+  }
+
+  app.on('web-contents-created', (_event, contents) => {
+    const sess = contents.session
+    if (sess && sess.webRequest) {
+      sess.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
+        if (shouldBlockUrl(details.url)) {
+          console.log(`[Session:dynamic] Blocked:`, details.url)
+          callback({ cancel: true })
+          return
+        }
+        callback({ cancel: false })
+      })
+    }
+  })
+
   createWindow()
   createTray()
   registerAllIPC()

@@ -18,7 +18,8 @@ export class Database {
         follows: {
           huya: [],
           douyin: [],
-          douyu: []
+          douyu: [],
+          bilibili: []
         }
       }
     })
@@ -72,12 +73,12 @@ export class Database {
   }
 
   getFollowsByPlatform(platform: Platform): FollowedAnchor[] {
-    const follows = this.store.get('follows', { huya: [], douyin: [], douyu: [] })
+    const follows = this.store.get('follows', { huya: [], douyin: [], douyu: [], bilibili: [] })
     return follows[platform] || []
   }
 
   saveFollows(anchors: FollowedAnchor[]) {
-    const follows = this.store.get('follows', { huya: [], douyin: [], douyu: [] })
+    const follows = this.store.get('follows', { huya: [], douyin: [], douyu: [], bilibili: [] })
     
     for (const anchor of anchors) {
       const platform = anchor.platform
@@ -111,7 +112,7 @@ export class Database {
   }
 
   deleteFollowsByPlatform(platform: Platform) {
-    const follows = this.store.get('follows', { huya: [], douyin: [], douyu: [] })
+    const follows = this.store.get('follows', { huya: [], douyin: [], douyu: [], bilibili: [] })
     follows[platform] = []
     this.store.set('follows', follows)
   }

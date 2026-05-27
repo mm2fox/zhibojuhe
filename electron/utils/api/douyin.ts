@@ -2,8 +2,6 @@ import axios from './axios-config'
 import type { FollowedAnchor, Platform } from '../../preload'
 
 export class DouyinAPI {
-  private static BASE_URL = 'https://www.douyin.com'
-
   static async getFollowList(cookies: string): Promise<FollowedAnchor[]> {
     try {
       const response = await axios.get('https://www.douyin.com/aweme/v1/web/user/following/', {

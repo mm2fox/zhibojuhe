@@ -12,7 +12,8 @@ const dockerStore = new Store<DockerStoreData>({
     docker: {
       tabs: [],
       activeTabId: null,
-      isCollapsed: false
+      isCollapsed: false,
+      splitMode: 'single'
     }
   }
 })

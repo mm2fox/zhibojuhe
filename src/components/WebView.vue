@@ -7,7 +7,7 @@
       :class="{ active: currentPlatform === platform && !activeTab && !isSplitMode }"
     >
       <webview
-        :ref="el => setMainWebviewRef(platform, el)"
+        :ref="(el: any) => setMainWebviewRef(platform, el)"
         :src="platformUrls[platform]"
         :partition="`persist:${platform}`"
         allowpopups
@@ -41,7 +41,7 @@
         </div>
       </template>
       <webview
-        :ref="el => setWebviewRef(tab.id, el)"
+        :ref="(el: any) => setWebviewRef(tab.id, el)"
         :src="getTabUrl(tab)"
         :partition="getTabPartition(tab)"
         allowpopups
@@ -77,43 +77,50 @@ const platforms: Platform[] = ['huya', 'douyin', 'douyu']
 const mainWebviewRefs = ref<Record<Platform, Electron.WebviewTag | null>>({
   huya: null,
   douyin: null,
-  douyu: null
+  douyu: null,
+  bilibili: null
 })
 const webviewRefs = ref<Map<string, Electron.WebviewTag>>(new Map())
 const mainLoading = ref(true)
 const cookieInjected = ref<Record<Platform, boolean>>({
   huya: false,
   douyin: false,
-  douyu: false
+  douyu: false,
+  bilibili: false
 })
 const dockerCookieInjected = ref<Set<string>>(new Set())
 const webviewEventsSet = ref<Set<string>>(new Set())
-const pendingMuteState = ref<Map<string, boolean>>(new Map())
 const lastExtractionTime = ref<Record<Platform, number>>({
   huya: 0,
   douyin: 0,
-  douyu: 0
+  douyu: 0,
+  bilibili: 0
 })
 const extractionId = ref<Record<Platform, number>>({
   huya: 0,
   douyin: 0,
-  douyu: 0
+  douyu: 0,
+  bilibili: 0
 })
 const backgroundRefreshPlatform = ref<Platform | null>(null)
 const backgroundRefreshWebviewRef = ref<Electron.WebviewTag | null>(null)
 const backgroundRefreshExtractionId = ref(0)
 const backgroundRefreshKey = ref(0)
+const tabLastHiddenTime = ref<Map<string, number>>(new Map())
+const TAB_RELOAD_THRESHOLD = 30000
 
 const platformUrls: Record<Platform, string> = {
   huya: 'https://www.huya.com/myfollow',
   douyin: 'https://www.douyin.com/follow',
-  douyu: 'https://www.douyu.com/directory/myFollow'
+  douyu: 'https://www.douyu.com/directory/myFollow',
+  bilibili: 'https://live.bilibili.com/p/eden/my-follow'
 }
 
 const roomUrls: Record<Platform, (roomId: string) => string> = {
   huya: (roomId: string) => `https://www.huya.com/${roomId}`,
   douyin: (roomId: string) => `https://live.douyin.com/${roomId}`,
-  douyu: (roomId: string) => `https://www.douyu.com/${roomId}`
+  douyu: (roomId: string) => `https://www.douyu.com/${roomId}`,
+  bilibili: (roomId: string) => `https://live.bilibili.com/${roomId}`
 }
 
 const currentPlatform = computed(() => accountStore.currentPlatform)
@@ -235,7 +242,9 @@ function handleNavigateToRoom(event: CustomEvent) {
   }
 }
 
+// @ts-ignore - used via docker IPC events
 function closeTab(id: string) {
+  tabLastHiddenTime.value.delete(id)
   dockerStore.removeTab(id)
   if (dockerStore.hasTabs && dockerStore.activeTabId) {
     window.dispatchEvent(new CustomEvent('docker-tab-selected', {
@@ -649,12 +658,25 @@ function setupDockerWebviewEvents(webview: Electron.WebviewTag, tabId: string) {
   })
 
   webview.addEventListener('new-window', (event: any) => {
+    const url = event.url || ''
+    if (handleExternalProtocol(url)) {
+      event.preventDefault()
+      try { webview.stop() } catch (e) { /* ignore */ }
+      return
+    }
     event.preventDefault()
   })
 
   webview.addEventListener('did-start-navigation', (event: any) => {
     setTimeout(applyMuteState, 100)
     if (handleExternalProtocol(event.url)) {
+      webview.stop()
+    }
+  })
+
+  webview.addEventListener('console-message', (event: any) => {
+    if (event.message && event.message.indexOf('bytedance://') !== -1) {
+      console.log('[WebView] Detected bytedance URL in console, stopping...')
       webview.stop()
     }
   })
@@ -671,6 +693,30 @@ function setupMainWebviewEvents(webview: Electron.WebviewTag, platform: Platform
   
   webview.addEventListener('dom-ready', () => {
     setTimeout(applyMainMuteState, 100)
+    try {
+      webview.executeJavaScript(`
+        (function() {
+          var blockProtocols = ['bytedance://', 'aweme://', 'snssdk://', 'toutiao://', 'xigua://'];
+          window.open = function(url) {
+            if (url && blockProtocols.some(function(p) { return url.toLowerCase().startsWith(p); })) {
+              console.log('[Blocked] window.open blocked:', url);
+              return null;
+            }
+            return null;
+          };
+          var origAssign = window.location.__proto__.assign;
+          if (origAssign) {
+            window.location.assign = function(url) {
+              if (url && blockProtocols.some(function(p) { return url.toLowerCase().startsWith(p); })) {
+                console.log('[Blocked] location.assign blocked:', url);
+                return;
+              }
+              origAssign.call(window.location, url);
+            };
+          }
+        })();
+      `)
+    } catch (e) { /* ignore */ }
   })
   
   webview.addEventListener('did-start-loading', () => {
@@ -745,12 +791,25 @@ function setupMainWebviewEvents(webview: Electron.WebviewTag, platform: Platform
   })
 
   webview.addEventListener('new-window', (event: any) => {
+    const url = event.url || ''
+    if (handleExternalProtocol(url)) {
+      event.preventDefault()
+      try { webview.stop() } catch (e) { /* ignore */ }
+      return
+    }
     event.preventDefault()
   })
 
   webview.addEventListener('did-start-navigation', (event: any) => {
     setTimeout(applyMainMuteState, 100)
     if (handleExternalProtocol(event.url)) {
+      webview.stop()
+    }
+  })
+
+  webview.addEventListener('console-message', (event: any) => {
+    if (event.message && event.message.indexOf('bytedance://') !== -1) {
+      console.log('[WebView] Detected bytedance URL in console, stopping...')
       webview.stop()
     }
   })
@@ -854,7 +913,20 @@ function setupBackgroundRefreshWebviewEvents(webview: Electron.WebviewTag) {
   })
 
   webview.addEventListener('new-window', (event: any) => {
+    const url = event.url || ''
+    if (handleExternalProtocol(url)) {
+      event.preventDefault()
+      try { webview.stop() } catch (e) { /* ignore */ }
+      return
+    }
     event.preventDefault()
+  })
+
+  webview.addEventListener('console-message', (event: any) => {
+    if (event.message && event.message.indexOf('bytedance://') !== -1) {
+      console.log('[BackgroundRefresh] Detected bytedance URL, stopping...')
+      webview.stop()
+    }
   })
 
   try {
@@ -886,6 +958,40 @@ watch(tabs, (newTabs, oldTabs) => {
     }
   })
 }, { deep: true })
+
+watch(activeTabId, (newTabId, oldTabId) => {
+  if (oldTabId && oldTabId !== newTabId) {
+    tabLastHiddenTime.value.set(oldTabId, Date.now())
+    
+    const oldWebview = webviewRefs.value.get(oldTabId)
+    if (oldWebview) {
+      try {
+        oldWebview.setAudioMuted(true)
+      } catch (error) {
+        // ignore
+      }
+    }
+  }
+  
+  if (newTabId) {
+    const newWebview = webviewRefs.value.get(newTabId)
+    const tab = dockerStore.getTabById(newTabId)
+    if (newWebview && tab) {
+      try {
+        newWebview.setAudioMuted(tab.muted !== false ? false : true)
+        
+        const lastHidden = tabLastHiddenTime.value.get(newTabId)
+        if (lastHidden && (Date.now() - lastHidden) > TAB_RELOAD_THRESHOLD) {
+          if (tab.platform === 'douyin') {
+            newWebview.reload()
+          }
+        }
+      } catch (error) {
+        // ignore
+      }
+    }
+  }
+})
 
 onMounted(async () => {
   await accountStore.loadAccounts()
@@ -922,7 +1028,7 @@ onMounted(async () => {
     dockerStore.setActiveTab(tabId)
   }) as EventListener)
 
-  window.addEventListener('cancel-extraction', ((event: CustomEvent) => {
+  window.addEventListener('cancel-extraction', ((event: CustomEvent<{ platform: Platform }>) => {
     const { platform } = event.detail
     extractionId.value[platform]++
   }) as EventListener)

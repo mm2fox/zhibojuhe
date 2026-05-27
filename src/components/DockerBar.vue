@@ -199,7 +199,8 @@ function handleCloseTab() {
   hideContextMenu()
 }
 
-function handleClickOutside(event: MouseEvent) {
+// @ts-ignore - event param required by addEventListener signature
+function handleClickOutside(_event: MouseEvent) {
   if (contextMenuVisible.value) {
     hideContextMenu()
   }
